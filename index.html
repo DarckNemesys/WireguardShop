@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Wireguard Shop · Tienda Digital</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- HEADER -->
+  <header class="app-header" id="appHeader">
+    <div class="header-left">
+      <button class="icon-btn" id="backBtn" aria-label="Atrás">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M15 6L9 12L15 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+    <div class="header-title">
+      <h1 id="headerTitle">Wireguard Shop</h1>
+      <span class="subtitle" id="headerSubtitle">Tienda digital</span>
+    </div>
+    <div class="header-right">
+      <button class="icon-btn" id="menuBtn" aria-label="Menú">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="6" r="1.5" fill="currentColor"/>
+          <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+          <circle cx="12" cy="18" r="1.5" fill="currentColor"/>
+        </svg>
+      </button>
+      <button class="icon-btn" id="adminPanelBtn" style="display: none;" aria-label="Panel Admin">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M12 15V17M6 21H18C19.1046 21 20 20.1046 20 19V5C20 3.89543 19.1046 3 18 3H6C4.89543 3 4 3.89543 4 5V19C4 20.1046 4.89543 21 6 21ZM16 11L12 15L8 11H16Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <main class="main-content" id="mainContent">
+    <!-- VISTA TIENDA -->
+    <div id="storeView" class="view active">
+      <div class="profile-card" id="userProfileCard">
+        <div class="avatar" id="userAvatar">👤</div>
+        <div class="profile-info">
+          <h2 class="profile-name" id="userName">Usuario Telegram</h2>
+          <p class="profile-username" id="userUsername">@usuario</p>
+        </div>
+        <button class="edit-btn" id="logoutBtn">Salir</button>
+      </div>
+
+      <div class="section" id="purchasesSection" style="display: none;">
+        <div class="section-header">
+          <span class="section-title">🛍️ Mis compras</span>
+        </div>
+        <div class="list-group" id="purchasesContainer"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">📦 Productos digitales</span>
+          <span class="product-count" id="productCount">0 items</span>
+        </div>
+        <div class="list-group" id="productsContainer">
+          <div class="empty-state" id="emptyProductsMsg">
+            <span class="empty-icon">🛒</span>
+            <p>No hay productos disponibles</p>
+            <p class="empty-hint">El administrador agregará productos pronto</p>
+          </div>
+        </div>
+      </div>
+
+      <footer class="app-footer">
+        <p>Wireguard Shop · Productos digitales</p>
+      </footer>
+    </div>
+
+    <!-- VISTA ADMIN -->
+    <div id="adminView" class="view">
+      <div class="admin-header">
+        <div class="admin-badge">
+          <span class="admin-icon">🛡️</span>
+          <span>Panel de Administración</span>
+        </div>
+      </div>
+
+      <!-- Envío manual con archivo adjunto -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">📨 Envío manual a usuario</span>
+        </div>
+        <div class="form-container">
+          <div class="form-group">
+            <label for="targetUserId">ID del usuario destinatario *</label>
+            <input type="text" id="targetUserId" placeholder="Ej: 7401051294">
+            <small class="form-hint">Pega el ID de Telegram del usuario</small>
+          </div>
+          <div class="form-group">
+            <label for="manualProductSelect">Producto a enviar</label>
+            <select id="manualProductSelect" class="form-select">
+              <option value="">Selecciona un producto...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="customMessage">Mensaje personalizado (opcional)</label>
+            <textarea id="customMessage" rows="2" placeholder="Ej: ¡Gracias por tu compra! Aquí está tu producto..."></textarea>
+          </div>
+          <div class="form-group">
+            <label for="manualAttachment">Archivo adjunto (opcional, máx. ~2 KB)</label>
+            <div class="file-input-wrapper">
+              <input type="file" id="manualAttachment" accept=".pdf,.zip,.rar,.7z,.doc,.docx,.txt,.jpg,.png">
+              <span class="file-name" id="attachmentFileName">Ningún archivo seleccionado</span>
+            </div>
+            <small class="form-hint">El archivo se enviará como documento.</small>
+          </div>
+          <button type="button" class="primary-button" id="sendManualProductBtn">
+            <span>📤 Enviar producto por chat</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Agregar producto -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">➕ Agregar nuevo producto</span>
+        </div>
+        <div class="form-container">
+          <form id="addProductForm">
+            <div class="form-group">
+              <label for="productName">Nombre del producto *</label>
+              <input type="text" id="productName" placeholder="Ej: Ebook Guía Completa" required maxlength="50">
+            </div>
+            <div class="form-group">
+              <label for="productDescription">Descripción</label>
+              <textarea id="productDescription" rows="3" placeholder="Describe el producto digital..." maxlength="200"></textarea>
+            </div>
+            <div class="form-row">
+              <div class="form-group half">
+                <label for="productPrice">Precio ($)</label>
+                <input type="number" id="productPrice" placeholder="0.00" min="0" step="0.01" value="0.00">
+              </div>
+              <div class="form-group half">
+                <label for="productFile">Archivo digital</label>
+                <input type="file" id="productFile" accept=".pdf,.zip,.mp4,.mp3,.jpg,.png,.txt">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="productImage">Imagen (emoji o URL)</label>
+              <input type="text" id="productImage" placeholder="🖼️ Emoji o URL de imagen" value="📦">
+            </div>
+            <div class="form-row stock-row">
+              <div class="form-group half">
+                <label for="productStock">Stock</label>
+                <select id="productStock" class="form-select">
+                  <option value="true" selected>✅ En stock</option>
+                  <option value="false">❌ Agotado</option>
+                </select>
+              </div>
+            </div>
+            <button type="submit" class="primary-button" id="submitProductBtn">
+              <span>✨ Agregar producto</span>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Lista de productos admin -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">📋 Productos existentes</span>
+          <span class="product-count" id="adminProductCount">0</span>
+        </div>
+        <div class="list-group" id="adminProductsList">
+          <div class="empty-state" id="adminEmptyMsg">
+            <span class="empty-icon">📭</span>
+            <p>No hay productos aún</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Configuración de pago por producto -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">⚙️ Configurar formulario de pago</span>
+        </div>
+        <div class="form-container" id="paymentConfigContainer">
+          <!-- Se llena dinámicamente desde JS -->
+        </div>
+      </div>
+
+      <!-- Usuarios con compras -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">👥 Usuarios con compras</span>
+        </div>
+        <div class="list-group" id="usersListContainer">
+          <div class="empty-state" id="usersEmptyMsg">
+            <span class="empty-icon">👤</span>
+            <p>No hay compras registradas</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-actions">
+        <button class="secondary-button" id="exportDataBtn">
+          <span>📤 Exportar datos</span>
+        </button>
+        <button class="danger-button" id="clearAllBtn">
+          <span>🗑️ Limpiar tienda</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- MODAL DE PAGO -->
+    <div class="modal-overlay" id="paymentModal" style="display: none;">
+      <div class="payment-modal-card">
+        <div class="payment-modal-header">
+          <h2>Wireguard Shop</h2>
+          <button class="close-modal-btn" id="closePaymentModal">&times;</button>
+        </div>
+        <div class="payment-modal-body">
+          <p class="payment-subtitle"></p>
+          <div class="plan-badge"></div>
+          <div class="contract-details">
+            <div class="checkbox-row">
+              <input type="checkbox" id="acceptTerms" required>
+              <label for="acceptTerms">Enviar el pago implica que usted acepta estos términos</label>
+            </div>
+            <ul class="terms-list"></ul>
+          </div>
+          <div class="coupon-section">
+            <label>Cupón de Descuento</label>
+            <div class="coupon-input-group">
+              <input type="text" id="couponCode" placeholder="Ingresa tu código de cupón">
+              <button type="button" class="verify-btn" id="verifyCouponBtn">Verificar</button>
+            </div>
+            <span class="coupon-message" id="couponMessage"></span>
+          </div>
+          <div class="price-table">
+            <div class="price-row">
+              <span>CUP:</span>
+              <span class="price-value" id="cupPrice">0 CUP</span>
+            </div>
+            <div class="price-row">
+              <span>SALDO:</span>
+              <span class="price-value" id="saldoPrice">0 CUP</span>
+            </div>
+          </div>
+          <div class="payment-methods-section">
+            <label>Métodos de Pago Disponibles</label>
+            <!-- Lista dinámica -->
+          </div>
+          <div class="form-group">
+            <label for="paymentMethod">Método de pago utilizado:</label>
+            <select id="paymentMethod" class="form-select" required>
+              <option value="">Selecciona el método de pago</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="paymentProof">Foto del comprobante:</label>
+            <div class="file-input-wrapper">
+              <input type="file" id="paymentProof" accept="image/*" capture="environment">
+              <span class="file-name" id="fileName">Ningún archivo seleccionado</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="contractType">Renovación o nuevo contrato *</label>
+            <select id="contractType" class="form-select" required>
+              <option value="">Selecciona una opción</option>
+              <option value="nuevo" selected>Contrato nuevo</option>
+              <!-- Otras opciones desactivadas (se pueden activar después) -->
+              <!-- <option value="renovacion">Renovación</option> -->
+            </select>
+          </div>
+          <div class="payment-modal-actions">
+            <button class="cancel-payment-btn" id="cancelPaymentBtn">Cancelar</button>
+            <button class="submit-payment-btn" id="submitPaymentBtn">Enviar Transferencia</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL DE EDICIÓN DE PRODUCTO -->
+    <div class="modal-overlay" id="editProductModal" style="display: none;">
+      <div class="modal-card" style="max-width: 500px; width: 90%;">
+        <h3>✏️ Editar producto</h3>
+        <form id="editProductForm">
+          <input type="hidden" id="editProductId">
+          <div class="form-group">
+            <label for="editProductName">Nombre *</label>
+            <input type="text" id="editProductName" required maxlength="50">
+          </div>
+          <div class="form-group">
+            <label for="editProductDescription">Descripción</label>
+            <textarea id="editProductDescription" rows="3" maxlength="200"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-group half">
+              <label for="editProductPrice">Precio ($)</label>
+              <input type="number" id="editProductPrice" min="0" step="0.01">
+            </div>
+            <div class="form-group half">
+              <label for="editProductImage">Imagen (emoji/URL)</label>
+              <input type="text" id="editProductImage" placeholder="📦">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="editProductStock">Estado del stock</label>
+            <select id="editProductStock" class="form-select">
+              <option value="true">✅ En stock</option>
+              <option value="false">❌ Agotado</option>
+            </select>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="modal-btn cancel" id="cancelEditBtn">Cancelar</button>
+            <button type="submit" class="modal-btn confirm">Guardar cambios</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL GENÉRICO -->
+    <div class="modal-overlay" id="modalOverlay" style="display: none;">
+      <div class="modal-card">
+        <h3 id="modalTitle">Confirmar</h3>
+        <p id="modalMessage">¿Estás seguro?</p>
+        <div class="modal-actions">
+          <button class="modal-btn cancel" id="modalCancel">Cancelar</button>
+          <button class="modal-btn confirm" id="modalConfirm">Aceptar</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- BARRA DE PESTAÑAS -->
+  <nav class="bottom-tabs" id="bottomTabs" style="display: none;">
+    <button class="tab-item active" data-view="store">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <path d="M3 9L12 3L21 9V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V9Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M9 21V15H15V21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Tienda</span>
+    </button>
+    <button class="tab-item" data-view="admin">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <path d="M12 15V17M6 21H18C19.1046 21 20 20.1046 20 19V5C20 3.89543 19.1046 3 18 3H6C4.89543 3 4 3.89543 4 5V19C4 20.1046 4.89543 21 6 21ZM16 11L12 15L8 11H16Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Admin</span>
+    </button>
+  </nav>
+
+  <script src="script.js"></script>
+</body>
+</html>
