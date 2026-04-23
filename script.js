@@ -578,9 +578,8 @@
     });
   }
 
-  // *** CORRECCIÓN: Enviar la foto al administrador, no al comprador ***
   async function uploadProofToTelegram(file) {
-    const adminId = ADMIN_IDS[0]; // Tu ID
+    const adminId = ADMIN_IDS[0];
     const clientName = currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : '');
     const productName = currentProductForPurchase ? currentProductForPurchase.name : 'Producto';
     
@@ -630,7 +629,7 @@
     
     const dataStr = JSON.stringify(purchaseData);
     if (new Blob([dataStr]).size > 4096) {
-      showToast('⚠️ La imagen es demasiado grande', 3000);
+      showToast('⚠️ Los datos son demasiado grandes', 3000);
       return;
     }
     
@@ -659,7 +658,7 @@
     closePaymentModalHandler();
   }
 
-  // ---------- ENVÍO MANUAL ----------
+  // ---------- ENVÍO MANUAL (MEJORADO) ----------
   function openManualSendForUser(userId, userDisplayName) {
     if (!adminView.classList.contains('active')) switchView('admin');
     document.getElementById('targetUserId').value = userId;
@@ -686,8 +685,11 @@
     };
     
     const dataStr = JSON.stringify(sendData);
-    if (new Blob([dataStr]).size > 4096) {
-      showToast('⚠️ El archivo es demasiado grande. Máximo ~4 KB.', 3000);
+    const sizeInBytes = new Blob([dataStr]).size;
+    console.log(`Tamaño del JSON a enviar: ${sizeInBytes} bytes (límite 4096)`);
+    
+    if (sizeInBytes > 4096) {
+      showToast(`⚠️ El archivo es demasiado grande (${Math.round(sizeInBytes/1024)} KB). Máximo 4 KB.`, 4000);
       return;
     }
     
@@ -699,6 +701,7 @@
       showToast(`📨 Enviado a ${targetUserId} (demo)`, 2000);
     }
     
+    // Limpiar campos
     document.getElementById('targetUserId').value = '';
     manualProductSelect.value = '';
     document.getElementById('customMessage').value = '';
@@ -877,6 +880,5 @@
     if (editProductModal) editProductModal.onclick = (e) => { if (e.target === editProductModal) closeEditModal(); };
   }
 
-  // Iniciar aplicación
   init();
 })();
