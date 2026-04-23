@@ -3,6 +3,7 @@
 
   // ---------- CONFIGURACIÓN ----------
   const ADMIN_IDS = [7401051294]; // ← TU ID REAL
+  const BOT_TOKEN = '8188077724:AAFFFbtDzHAE-Tn9SwRhQuvA7sfzFijz0VE'; // Solo para envío de foto
 
   // ---------- VARIABLES GLOBALES ----------
   let tg = null;
@@ -559,8 +560,18 @@
         return;
       }
       fileName.textContent = file.name;
+      showToast('⏳ Subiendo imagen...', 2000);
       try {
-        selectedImageBase64 = await compressImage(file);
+        if (isTelegram) {
+          selectedImageBase64 = await uploadProofToTelegram(file);
+          showToast('✅ Imagen subida correctamente', 1500);
+        } else {
+          // Modo demo: previsualización local sin subir
+          const reader = new FileReader();
+          reader.onload = (ev) => { selectedImageBase64 = ev.target.result; };
+          reader.readAsDataURL(file);
+          showToast('✅ Imagen lista (modo demo)', 1000);
+        }
         const wrapper = document.querySelector('.file-input-wrapper');
         let preview = wrapper.querySelector('.image-preview');
         if (!preview) {
@@ -568,47 +579,31 @@
           preview.className = 'image-preview';
           wrapper.appendChild(preview);
         }
-        preview.src = selectedImageBase64;
-        showToast('✅ Imagen lista para enviar', 1000);
+        preview.src = URL.createObjectURL(file);
       } catch(err) {
-        showToast('❌ Error al procesar la imagen', 2000);
+        console.error(err);
+        showToast('❌ Error al subir la imagen', 2500);
         selectedImageBase64 = null;
       }
     });
   }
 
-  function compressImage(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const maxSize = 800;
-          if (width > maxSize || height > maxSize) {
-            if (width > height) {
-              height = (height / width) * maxSize;
-              width = maxSize;
-            } else {
-              width = (width / height) * maxSize;
-              height = maxSize;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          const base64 = canvas.toDataURL('image/jpeg', 0.7);
-          resolve(base64);
-        };
-        img.onerror = reject;
-        img.src = e.target.result;
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
+  async function uploadProofToTelegram(file) {
+    const chatId = currentUser.id;
+    const formData = new FormData();
+    formData.append('chat_id', chatId);
+    formData.append('photo', file);
+    formData.append('caption', '🧾 Comprobante de pago');
+
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+      method: 'POST',
+      body: formData
     });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.description || 'Error al subir foto');
+    // Devolver el file_id de la foto en mayor resolución
+    const photos = json.result.photo;
+    return photos[photos.length - 1].file_id;
   }
 
   if (verifyCouponBtn) {
@@ -635,7 +630,7 @@
         method: selectedMethod,
         contractType: contractType.value,
         coupon: couponCode.value || null,
-        imageBase64: selectedImageBase64
+        proofFileId: selectedImageBase64 || null  // file_id de Telegram (o base64 en demo)
       },
       timestamp: new Date().toISOString()
     };
