@@ -592,10 +592,15 @@ body {
   padding: 12px;
   border: 1px dashed var(--tg-separator);
   border-radius: 12px;
+  cursor: pointer;
 }
 
-.file-input-wrapper input {
-  display: none;
+.file-input-wrapper input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .file-input-wrapper::before {

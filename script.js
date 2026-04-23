@@ -24,9 +24,9 @@
     ],
     prices: { cup: 342, saldo: 137 },
     paymentMethods: [
-      { name: 'Bolsa MiTrasfer (Monedero) CUP', number: '55784186' },
-      { name: 'Saldo movil y número a confirmar', number: '55784186' },
-      { name: 'Tarjeta CUP', number: '9234069996344689' }
+      { name: 'Bolsa MiTrasfer (Monedero) CUP', number: '54283852' },
+      { name: 'Saldo movil y número a confirmar', number: '54283852' },
+      { name: 'Tarjeta CUP', number: '9248129970975892' }
     ]
   };
 
@@ -641,7 +641,7 @@
     };
     
     const dataStr = JSON.stringify(purchaseData);
-    if (dataStr.length > 4000) {
+    if (new Blob([dataStr]).size > 4096) {
       showToast('⚠️ La imagen es demasiado grande', 3000);
       return;
     }
@@ -672,10 +672,10 @@
   }
 
   // ---------- ENVÍO MANUAL ----------
-  function openManualSendForUser(userId, userName) {
+  function openManualSendForUser(userId, userDisplayName) {
     if (!adminView.classList.contains('active')) switchView('admin');
     document.getElementById('targetUserId').value = userId;
-    showToast(`📝 Preparando envío para ${userName || 'usuario ' + userId}`, 2000);
+    showToast(`📝 Preparando envío para ${userDisplayName || 'usuario ' + userId}`, 2000);
   }
 
   function handleManualSend() {
@@ -698,8 +698,8 @@
     };
     
     const dataStr = JSON.stringify(sendData);
-    if (dataStr.length > 4000) {
-      showToast('⚠️ El archivo es demasiado grande. Máximo ~2 KB.', 3000);
+    if (new Blob([dataStr]).size > 4096) {
+      showToast('⚠️ El archivo es demasiado grande. Máximo ~4 KB.', 3000);
       return;
     }
     
@@ -816,9 +816,9 @@
   function showToast(message, duration = 2000) {
     const toast = document.createElement('div');
     toast.textContent = message;
-    toast.style.cssText = 'position:fixed; bottom:100px; left:50%; transform:translateX(-50%); background:rgba(28,28,30,0.9); color:white; padding:10px 20px; border-radius:40px; font-size:14px; z-index:9999;';
+    toast.style.cssText = 'position:fixed; bottom:100px; left:50%; transform:translateX(-50%); background:rgba(28,28,30,0.9); color:white; padding:10px 20px; border-radius:40px; font-size:14px; z-index:9999; transition:opacity 0.2s ease;';
     document.body.appendChild(toast);
-    setTimeout(() => { toast.style.opacity='0'; setTimeout(() => toast.remove(), 200); }, duration);
+    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 200); }, duration);
   }
 
   // ---------- EVENT LISTENERS ----------
@@ -857,8 +857,13 @@
     
     const exportBtn = document.getElementById('exportDataBtn');
     if (exportBtn) exportBtn.onclick = () => {
-      console.log('Export:', { products, purchases, paymentConfigs });
-      showToast('📤 Datos en consola', 1500);
+      const exportPayload = JSON.stringify({ action: 'export_data', data: { products, purchases, paymentConfigs } });
+      if (isTelegram) {
+        tg.sendData(exportPayload);
+      } else {
+        console.log('Export:', { products, purchases, paymentConfigs });
+        showToast('📤 Datos en consola (modo demo)', 1500);
+      }
     };
     const clearBtn = document.getElementById('clearAllBtn');
     if (clearBtn) clearBtn.onclick = () => {
