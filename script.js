@@ -1,16 +1,21 @@
 (function() {
   'use strict';
 
+  // ---------- CONFIGURACIÓN ----------
+  const ADMIN_IDS = [7401051294]; // ← Reemplaza con tu ID real de Telegram
+  // ----------------------------------
+
   const tg = window.Telegram?.WebApp;
   const isTelegram = !!tg;
-  const ADMIN_IDS = [7401051294]; // ← Asegúrate de que sea tu ID real
 
+  // Estado global
   let currentUser = null;
   let isAdmin = false;
   let products = [];
   let purchases = [];
   let paymentConfigs = {};
 
+  // Configuración por defecto del formulario de pago
   const defaultPaymentConfig = {
     subtitle: 'Wireguard para navegar por la nacional (con Nauta hogar o WiFi ETECSA)',
     planName: 'Plan Personal Salida por Cuba',
@@ -28,7 +33,7 @@
     ]
   };
 
-  // Referencias DOM (todas las necesarias)
+  // ---------- REFERENCIAS DOM ----------
   const storeView = document.getElementById('storeView');
   const adminView = document.getElementById('adminView');
   const adminPanelBtn = document.getElementById('adminPanelBtn');
@@ -85,8 +90,10 @@
   let currentProductForPurchase = null;
   let selectedImageBase64 = null;
 
-  // ---------- INICIALIZACIÓN ROBUSTA CON ESPERA ----------
+  // ---------- INICIALIZACIÓN ROBUSTA ----------
   async function init() {
+    console.log('🚀 Iniciando Wireguard Shop...');
+
     if (!isTelegram) {
       console.warn('💻 No estás en Telegram. Modo demostración.');
       currentUser = { id: 0, first_name: 'Demo', username: 'demo' };
@@ -95,34 +102,66 @@
       return;
     }
 
-    tg.ready();
-    tg.expand();
+    try {
+      tg.ready();
+      tg.expand();
+      console.log('✅ Telegram WebApp expandido');
 
-    let attempts = 0;
-    const maxAttempts = 20; // 2 segundos
+      // Esperar a que Telegram termine de inyectar los datos
+      // Estrategia: intentar leer initData cada 100ms hasta 10 intentos (1 segundo)
+      let userData = null;
+      for (let i = 0; i < 10; i++) {
+        // Intentar obtener datos de initData (más fiable que initDataUnsafe)
+        const initData = tg.initData || '';
+        if (initData) {
+          // Parsear manualmente los parámetros de initData
+          const params = new URLSearchParams(initData);
+          const userParam = params.get('user');
+          if (userParam) {
+            try {
+              const userObj = JSON.parse(userParam);
+              if (userObj.id) {
+                userData = userObj;
+                console.log('🎉 Usuario encontrado en initData:', userData);
+                break;
+              }
+            } catch (e) {
+              console.warn('Error parseando user de initData:', e);
+            }
+          }
+        }
 
-    while (attempts < maxAttempts) {
-      const initData = tg.initDataUnsafe || {};
-      if (initData.user && initData.user.id) {
+        // Fallback a initDataUnsafe
+        const unsafe = tg.initDataUnsafe || {};
+        if (unsafe.user && unsafe.user.id) {
+          userData = unsafe.user;
+          console.log('🎉 Usuario encontrado en initDataUnsafe:', userData);
+          break;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      if (userData) {
         currentUser = {
-          id: initData.user.id,
-          first_name: initData.user.first_name,
-          last_name: initData.user.last_name,
-          username: initData.user.username
+          id: userData.id,
+          first_name: userData.first_name,
+          last_name: userData.last_name,
+          username: userData.username
         };
         isAdmin = ADMIN_IDS.includes(currentUser.id);
-        console.log('✅ Usuario detectado:', currentUser);
-        console.log('👑 ¿Es admin?:', isAdmin);
-        break;
+        console.log(`👤 Usuario: ${currentUser.first_name} (ID: ${currentUser.id})`);
+        console.log(`👑 ¿Es admin?: ${isAdmin}`);
+      } else {
+        console.error('❌ No se pudo obtener información del usuario después de 1 segundo.');
+        // Mostrar mensaje de error en la UI
+        showToast('⚠️ No se pudo autenticar. Reabre desde el bot.', 5000);
+        currentUser = { id: 0, first_name: 'Invitado', username: null };
+        isAdmin = false;
       }
-      await new Promise(resolve => setTimeout(resolve, 100));
-      attempts++;
-    }
-
-    if (!currentUser) {
-      console.error('❌ No se recibieron datos del usuario después de 2 segundos.');
-      showToast('⚠️ Error de autenticación. Reabre desde el bot.', 5000);
-      currentUser = { id: 0, first_name: 'Invitado', username: null };
+    } catch (error) {
+      console.error('💥 Error durante inicialización:', error);
+      currentUser = { id: 0, first_name: 'Error', username: null };
       isAdmin = false;
     }
 
@@ -141,11 +180,28 @@
     populateManualSelect();
     renderPaymentConfigForm();
     setupEventListeners();
+
+    // Agregar botón de recarga manual en el header para el admin (por si falla la primera vez)
+    addReloadAuthButton();
   }
 
-  // ------------------------------------------------------------
-  // FUNCIONES DE GESTIÓN DE DATOS (load/save)
-  // ------------------------------------------------------------
+  // Botón para forzar reintento de autenticación
+  function addReloadAuthButton() {
+    if (!isAdmin) return;
+
+    const headerRight = document.querySelector('.header-right');
+    const reloadBtn = document.createElement('button');
+    reloadBtn.className = 'icon-btn';
+    reloadBtn.innerHTML = '🔄';
+    reloadBtn.title = 'Reintentar autenticación';
+    reloadBtn.onclick = () => {
+      console.log('🔄 Reintentando autenticación...');
+      init();
+    };
+    headerRight.insertBefore(reloadBtn, adminPanelBtn);
+  }
+
+  // ---------- FUNCIONES DE GESTIÓN DE DATOS ----------
   function loadProducts() {
     const stored = localStorage.getItem('telegram_shop_products');
     if (stored) {
@@ -192,9 +248,7 @@
     return paymentConfigs[productId] || JSON.parse(JSON.stringify(defaultPaymentConfig));
   }
 
-  // ------------------------------------------------------------
-  // RENDERIZADO Y UI (funciones existentes sin cambios)
-  // ------------------------------------------------------------
+  // ---------- RENDERIZADO DE UI ----------
   function updateUIForRole() {
     const displayName = currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : '');
     userName.textContent = displayName || 'Usuario';
@@ -375,9 +429,7 @@
     }
   }
 
-  // ------------------------------------------------------------
-  // CONFIGURACIÓN DE PAGO POR PRODUCTO
-  // ------------------------------------------------------------
+  // ---------- CONFIGURACIÓN DE PAGO POR PRODUCTO ----------
   function renderPaymentConfigForm() {
     const container = document.getElementById('paymentConfigContainer');
     if (!container) return;
@@ -508,9 +560,7 @@
     });
   }
 
-  // ------------------------------------------------------------
-  // MODAL DE PAGO Y COMPRA
-  // ------------------------------------------------------------
+  // ---------- MODAL DE PAGO ----------
   function openPaymentModal(product) {
     currentProductForPurchase = product;
     selectedImageBase64 = null;
@@ -656,9 +706,7 @@
     closePaymentModalHandler();
   }
 
-  // ------------------------------------------------------------
-  // ENVÍO MANUAL CON ARCHIVO
-  // ------------------------------------------------------------
+  // ---------- ENVÍO MANUAL ----------
   function openManualSendForUser(userId, userName) {
     if (!adminView.classList.contains('active')) switchView('admin');
     document.getElementById('targetUserId').value = userId;
@@ -706,9 +754,7 @@
     manualFileBase64 = null;
   }
 
-  // ------------------------------------------------------------
-  // EDICIÓN DE PRODUCTOS
-  // ------------------------------------------------------------
+  // ---------- EDICIÓN DE PRODUCTOS ----------
   function openEditModal(product) {
     editProductId.value = product.id;
     editProductName.value = product.name;
@@ -810,9 +856,7 @@
     setTimeout(() => { toast.style.opacity='0'; setTimeout(() => toast.remove(), 200); }, duration);
   }
 
-  // ------------------------------------------------------------
-  // EVENT LISTENERS
-  // ------------------------------------------------------------
+  // ---------- EVENT LISTENERS ----------
   function setupEventListeners() {
     if (backBtn) backBtn.onclick = () => {
       if (adminView.classList.contains('active') && isAdmin) switchView('store');
@@ -875,6 +919,6 @@
     if (editProductModal) editProductModal.onclick = (e) => { if (e.target === editProductModal) closeEditModal(); };
   }
 
-  // Arranque
+  // Iniciar
   init();
 })();
