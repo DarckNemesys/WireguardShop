@@ -3,7 +3,7 @@
 
   // ---------- CONFIGURACIÓN ----------
   const ADMIN_IDS = [7401051294]; // ← TU ID REAL
-  const BOT_TOKEN = '8188077724:AAFFFbtDzHAE-Tn9SwRhQuvA7sfzFijz0VE'; // Solo para envío de foto
+  const BOT_TOKEN = '8188077724:AAFFFbtDzHAE-Tn9SwRhQuvA7sfzFijz0VE'; // Token del bot
 
   // ---------- VARIABLES GLOBALES ----------
   let tg = null;
@@ -124,7 +124,6 @@
     if (isTelegram) {
       tg.ready();
       tg.expand();
-      // Forzar lectura de initDataUnsafe (ya debe estar disponible)
       const initData = tg.initDataUnsafe || {};
       if (initData.user && initData.user.id) {
         currentUser = {
@@ -142,28 +141,20 @@
         isAdmin = false;
       }
     } else {
-      // Modo navegador normal (demo)
       currentUser = { id: 0, first_name: 'Demo', username: 'demo' };
-      isAdmin = false; // Puedes poner true para pruebas locales
+      isAdmin = false;
     }
 
-    // Cargar datos del localStorage
     loadProducts();
     loadPurchases();
     loadPaymentConfigs();
-
-    // Actualizar UI según rol
     updateUIForRole();
-
-    // Renderizar vistas
     renderStore();
     renderAdminList();
     renderUsersList();
     renderUserPurchases();
     populateManualSelect();
     renderPaymentConfigForm();
-
-    // Configurar listeners
     setupEventListeners();
   }
 
@@ -566,7 +557,6 @@
           selectedImageBase64 = await uploadProofToTelegram(file);
           showToast('✅ Imagen subida correctamente', 1500);
         } else {
-          // Modo demo: previsualización local sin subir
           const reader = new FileReader();
           reader.onload = (ev) => { selectedImageBase64 = ev.target.result; };
           reader.readAsDataURL(file);
@@ -588,12 +578,16 @@
     });
   }
 
+  // *** CORRECCIÓN: Enviar la foto al administrador, no al comprador ***
   async function uploadProofToTelegram(file) {
-    const chatId = currentUser.id;
+    const adminId = ADMIN_IDS[0]; // Tu ID
+    const clientName = currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : '');
+    const productName = currentProductForPurchase ? currentProductForPurchase.name : 'Producto';
+    
     const formData = new FormData();
-    formData.append('chat_id', chatId);
+    formData.append('chat_id', adminId);
     formData.append('photo', file);
-    formData.append('caption', '🧾 Comprobante de pago');
+    formData.append('caption', `🧾 Comprobante de ${clientName} (ID: ${currentUser.id})\nProducto: ${productName}`);
 
     const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
       method: 'POST',
@@ -601,7 +595,6 @@
     });
     const json = await res.json();
     if (!json.ok) throw new Error(json.description || 'Error al subir foto');
-    // Devolver el file_id de la foto en mayor resolución
     const photos = json.result.photo;
     return photos[photos.length - 1].file_id;
   }
@@ -630,7 +623,7 @@
         method: selectedMethod,
         contractType: contractType.value,
         coupon: couponCode.value || null,
-        proofFileId: selectedImageBase64 || null  // file_id de Telegram (o base64 en demo)
+        proofFileId: selectedImageBase64 || null
       },
       timestamp: new Date().toISOString()
     };
