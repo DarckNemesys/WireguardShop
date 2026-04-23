@@ -665,7 +665,7 @@
     showToast(`📝 Preparando envío para ${userDisplayName || 'usuario ' + userId}`, 2000);
   }
 
-  function handleManualSend() {
+  async function handleManualSend() {
     const targetUserId = document.getElementById('targetUserId').value.trim();
     const productId = manualProductSelect.value;
     const customMessage = document.getElementById('customMessage').value.trim();
@@ -676,12 +676,38 @@
     }
     
     const product = products.find(p => p.id === productId);
+    let attachmentFileId = null;
+
+    if (isTelegram && manualAttachment && manualAttachment.files && manualAttachment.files.length > 0) {
+      const file = manualAttachment.files[0];
+      showToast('⏳ Subiendo archivo a Telegram...', 2000);
+      try {
+        const formData = new FormData();
+        formData.append('chat_id', ADMIN_IDS[0]); // Subimos temporalmente al admin para obtener el file_id
+        formData.append('document', file);
+        
+        const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, {
+          method: 'POST',
+          body: formData
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.description || 'Error en subida');
+        attachmentFileId = json.result.document.file_id;
+        showToast('✅ Archivo listo para envío', 1500);
+      } catch (err) {
+        console.error('Error al subir archivo:', err);
+        showToast('❌ Error al subir el archivo adjunto', 3000);
+        return;
+      }
+    }
+
     const sendData = {
       action: 'manual_send',
       target_user_id: targetUserId,
       product: product,
       custom_message: customMessage || `Aquí está tu producto: ${product.name}`,
-      attachment: manualFileBase64 || null
+      attachment: attachmentFileId ? null : (manualFileBase64 || null),
+      attachment_file_id: attachmentFileId
     };
     
     const dataStr = JSON.stringify(sendData);
