@@ -2,20 +2,17 @@
   'use strict';
 
   // ---------- CONFIGURACIÓN ----------
-  const ADMIN_IDS = [7401051294]; // ← Reemplaza con tu ID real de Telegram
-  // ----------------------------------
+  const ADMIN_IDS = [7401051294]; // ← TU ID REAL
 
-  const tg = window.Telegram?.WebApp;
-  const isTelegram = !!tg;
-
-  // Estado global
+  // ---------- VARIABLES GLOBALES ----------
+  let tg = null;
+  let isTelegram = false;
   let currentUser = null;
   let isAdmin = false;
   let products = [];
   let purchases = [];
   let paymentConfigs = {};
 
-  // Configuración por defecto del formulario de pago
   const defaultPaymentConfig = {
     subtitle: 'Wireguard para navegar por la nacional (con Nauta hogar o WiFi ETECSA)',
     planName: 'Plan Personal Salida por Cuba',
@@ -90,118 +87,86 @@
   let currentProductForPurchase = null;
   let selectedImageBase64 = null;
 
-  // ---------- INICIALIZACIÓN ROBUSTA ----------
+  // ---------- ESPERAR A QUE TELEGRAM ESTÉ LISTO ----------
+  function waitForTelegram(timeout = 3000) {
+    return new Promise((resolve, reject) => {
+      if (window.Telegram && window.Telegram.WebApp) {
+        resolve(window.Telegram.WebApp);
+        return;
+      }
+      let elapsed = 0;
+      const interval = setInterval(() => {
+        if (window.Telegram && window.Telegram.WebApp) {
+          clearInterval(interval);
+          resolve(window.Telegram.WebApp);
+        } else if (elapsed >= timeout) {
+          clearInterval(interval);
+          reject(new Error('Telegram WebApp no disponible'));
+        }
+        elapsed += 100;
+      }, 100);
+    });
+  }
+
+  // ---------- INICIALIZACIÓN ASÍNCRONA ----------
   async function init() {
     console.log('🚀 Iniciando Wireguard Shop...');
-
-    if (!isTelegram) {
-      console.warn('💻 No estás en Telegram. Modo demostración.');
-      currentUser = { id: 0, first_name: 'Demo', username: 'demo' };
-      isAdmin = false;
-      finishInit();
-      return;
+    try {
+      tg = await waitForTelegram(3000);
+      isTelegram = true;
+      console.log('✅ Telegram WebApp detectado');
+    } catch (e) {
+      console.warn('💻 No se detectó Telegram. Modo demostración.');
+      isTelegram = false;
     }
 
-    try {
+    if (isTelegram) {
       tg.ready();
       tg.expand();
-      console.log('✅ Telegram WebApp expandido');
-
-      // Esperar a que Telegram termine de inyectar los datos
-      // Estrategia: intentar leer initData cada 100ms hasta 10 intentos (1 segundo)
-      let userData = null;
-      for (let i = 0; i < 10; i++) {
-        // Intentar obtener datos de initData (más fiable que initDataUnsafe)
-        const initData = tg.initData || '';
-        if (initData) {
-          // Parsear manualmente los parámetros de initData
-          const params = new URLSearchParams(initData);
-          const userParam = params.get('user');
-          if (userParam) {
-            try {
-              const userObj = JSON.parse(userParam);
-              if (userObj.id) {
-                userData = userObj;
-                console.log('🎉 Usuario encontrado en initData:', userData);
-                break;
-              }
-            } catch (e) {
-              console.warn('Error parseando user de initData:', e);
-            }
-          }
-        }
-
-        // Fallback a initDataUnsafe
-        const unsafe = tg.initDataUnsafe || {};
-        if (unsafe.user && unsafe.user.id) {
-          userData = unsafe.user;
-          console.log('🎉 Usuario encontrado en initDataUnsafe:', userData);
-          break;
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      if (userData) {
+      // Forzar lectura de initDataUnsafe (ya debe estar disponible)
+      const initData = tg.initDataUnsafe || {};
+      if (initData.user && initData.user.id) {
         currentUser = {
-          id: userData.id,
-          first_name: userData.first_name,
-          last_name: userData.last_name,
-          username: userData.username
+          id: initData.user.id,
+          first_name: initData.user.first_name,
+          last_name: initData.user.last_name,
+          username: initData.user.username
         };
         isAdmin = ADMIN_IDS.includes(currentUser.id);
-        console.log(`👤 Usuario: ${currentUser.first_name} (ID: ${currentUser.id})`);
-        console.log(`👑 ¿Es admin?: ${isAdmin}`);
+        console.log('👤 Usuario:', currentUser);
+        console.log('👑 ¿Admin?:', isAdmin);
       } else {
-        console.error('❌ No se pudo obtener información del usuario después de 1 segundo.');
-        // Mostrar mensaje de error en la UI
-        showToast('⚠️ No se pudo autenticar. Reabre desde el bot.', 5000);
+        console.error('❌ No se recibió información del usuario.');
         currentUser = { id: 0, first_name: 'Invitado', username: null };
         isAdmin = false;
       }
-    } catch (error) {
-      console.error('💥 Error durante inicialización:', error);
-      currentUser = { id: 0, first_name: 'Error', username: null };
-      isAdmin = false;
+    } else {
+      // Modo navegador normal (demo)
+      currentUser = { id: 0, first_name: 'Demo', username: 'demo' };
+      isAdmin = false; // Puedes poner true para pruebas locales
     }
 
-    finishInit();
-  }
-
-  function finishInit() {
+    // Cargar datos del localStorage
     loadProducts();
     loadPurchases();
     loadPaymentConfigs();
+
+    // Actualizar UI según rol
     updateUIForRole();
+
+    // Renderizar vistas
     renderStore();
     renderAdminList();
     renderUsersList();
     renderUserPurchases();
     populateManualSelect();
     renderPaymentConfigForm();
+
+    // Configurar listeners
     setupEventListeners();
-
-    // Agregar botón de recarga manual en el header para el admin (por si falla la primera vez)
-    addReloadAuthButton();
   }
 
-  // Botón para forzar reintento de autenticación
-  function addReloadAuthButton() {
-    if (!isAdmin) return;
-
-    const headerRight = document.querySelector('.header-right');
-    const reloadBtn = document.createElement('button');
-    reloadBtn.className = 'icon-btn';
-    reloadBtn.innerHTML = '🔄';
-    reloadBtn.title = 'Reintentar autenticación';
-    reloadBtn.onclick = () => {
-      console.log('🔄 Reintentando autenticación...');
-      init();
-    };
-    headerRight.insertBefore(reloadBtn, adminPanelBtn);
-  }
-
-  // ---------- FUNCIONES DE GESTIÓN DE DATOS ----------
+  // ---------- GESTIÓN DE DATOS (load/save) ----------
   function loadProducts() {
     const stored = localStorage.getItem('telegram_shop_products');
     if (stored) {
@@ -219,7 +184,7 @@
   function saveProducts() {
     localStorage.setItem('telegram_shop_products', JSON.stringify(products));
     populateManualSelect();
-    renderPaymentConfigForm();
+    if (typeof renderPaymentConfigForm === 'function') renderPaymentConfigForm();
   }
 
   function loadPurchases() {
@@ -248,13 +213,13 @@
     return paymentConfigs[productId] || JSON.parse(JSON.stringify(defaultPaymentConfig));
   }
 
-  // ---------- RENDERIZADO DE UI ----------
+  // ---------- ACTUALIZACIÓN DE UI ----------
   function updateUIForRole() {
     const displayName = currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : '');
     userName.textContent = displayName || 'Usuario';
     userUsername.textContent = currentUser.username ? '@' + currentUser.username : '@usuario';
     userAvatar.textContent = (currentUser.first_name?.charAt(0) || 'U').toUpperCase();
-    
+
     if (isAdmin) {
       adminPanelBtn.style.display = 'flex';
       bottomTabs.style.display = 'flex';
@@ -267,6 +232,7 @@
     headerTitle.textContent = 'Wireguard Shop';
   }
 
+  // ---------- RENDERIZADO DE PRODUCTOS ----------
   function populateManualSelect() {
     if (!manualProductSelect) return;
     manualProductSelect.innerHTML = '<option value="">Selecciona un producto...</option>';
@@ -282,12 +248,12 @@
     if (!productsContainer) return;
     productsContainer.innerHTML = '';
     if (products.length === 0) {
-      if (emptyProductsMsg) emptyProductsMsg.style.display = 'block';
-      if (productCount) productCount.textContent = '0 items';
+      emptyProductsMsg.style.display = 'block';
+      productCount.textContent = '0 items';
       return;
     }
-    if (emptyProductsMsg) emptyProductsMsg.style.display = 'none';
-    if (productCount) productCount.textContent = `${products.length} items`;
+    emptyProductsMsg.style.display = 'none';
+    productCount.textContent = `${products.length} items`;
     products.forEach(product => {
       const item = createProductElement(product, false);
       productsContainer.appendChild(item);
@@ -298,12 +264,12 @@
     if (!adminProductsList) return;
     adminProductsList.innerHTML = '';
     if (products.length === 0) {
-      if (adminEmptyMsg) adminEmptyMsg.style.display = 'block';
-      if (adminProductCount) adminProductCount.textContent = '0';
+      adminEmptyMsg.style.display = 'block';
+      adminProductCount.textContent = '0';
       return;
     }
-    if (adminEmptyMsg) adminEmptyMsg.style.display = 'none';
-    if (adminProductCount) adminProductCount.textContent = products.length;
+    adminEmptyMsg.style.display = 'none';
+    adminProductCount.textContent = products.length;
     products.forEach(product => {
       const item = createProductElement(product, true);
       adminProductsList.appendChild(item);
@@ -327,7 +293,7 @@
       <div class="product-actions"></div>
     `;
     const actionsDiv = div.querySelector('.product-actions');
-    
+
     if (isAdminView) {
       const editBtn = document.createElement('button');
       editBtn.className = 'admin-edit-btn';
@@ -367,6 +333,7 @@
     return div.innerHTML;
   }
 
+  // ---------- RENDERIZADO DE USUARIOS Y COMPRAS ----------
   function renderUsersList() {
     if (!usersListContainer) return;
     usersListContainer.innerHTML = '';
@@ -379,10 +346,10 @@
     });
     const users = Array.from(userMap.values());
     if (users.length === 0) {
-      if (usersEmptyMsg) usersEmptyMsg.style.display = 'block';
+      usersEmptyMsg.style.display = 'block';
       return;
     }
-    if (usersEmptyMsg) usersEmptyMsg.style.display = 'none';
+    usersEmptyMsg.style.display = 'none';
     users.forEach(user => {
       const div = document.createElement('div');
       div.className = 'user-item';
@@ -406,30 +373,28 @@
   function renderUserPurchases() {
     const userPurchases = purchases.filter(p => p.userId === currentUser.id);
     if (userPurchases.length === 0) {
-      if (purchasesSection) purchasesSection.style.display = 'none';
+      purchasesSection.style.display = 'none';
       return;
     }
-    if (purchasesSection) purchasesSection.style.display = 'block';
-    if (purchasesContainer) {
-      purchasesContainer.innerHTML = '';
-      userPurchases.forEach(purchase => {
-        const product = products.find(p => p.id === purchase.productId);
-        if (!product) return;
-        const div = document.createElement('div');
-        div.className = 'purchase-item';
-        div.innerHTML = `
-          <div class="product-image">${product.image || '📦'}</div>
-          <div class="product-details">
-            <div class="product-title">${escapeHtml(product.name)}</div>
-            <div class="product-description">Comprado el ${new Date(purchase.date).toLocaleDateString()}</div>
-          </div>
-        `;
-        purchasesContainer.appendChild(div);
-      });
-    }
+    purchasesSection.style.display = 'block';
+    purchasesContainer.innerHTML = '';
+    userPurchases.forEach(purchase => {
+      const product = products.find(p => p.id === purchase.productId);
+      if (!product) return;
+      const div = document.createElement('div');
+      div.className = 'purchase-item';
+      div.innerHTML = `
+        <div class="product-image">${product.image || '📦'}</div>
+        <div class="product-details">
+          <div class="product-title">${escapeHtml(product.name)}</div>
+          <div class="product-description">Comprado el ${new Date(purchase.date).toLocaleDateString()}</div>
+        </div>
+      `;
+      purchasesContainer.appendChild(div);
+    });
   }
 
-  // ---------- CONFIGURACIÓN DE PAGO POR PRODUCTO ----------
+  // ---------- CONFIGURACIÓN DE PAGO (renderizado del panel) ----------
   function renderPaymentConfigForm() {
     const container = document.getElementById('paymentConfigContainer');
     if (!container) return;
@@ -919,6 +884,6 @@
     if (editProductModal) editProductModal.onclick = (e) => { if (e.target === editProductModal) closeEditModal(); };
   }
 
-  // Iniciar
+  // Iniciar aplicación
   init();
 })();
