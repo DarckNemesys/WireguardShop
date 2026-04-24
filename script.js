@@ -1,34 +1,8 @@
-(function () {
+(function() {
   'use strict';
 
   // ---------- CONFIGURACIÓN ----------
   const ADMIN_IDS = [7401051294]; // ← TU ID REAL
-  const BOT_TOKEN = '8188077724:AAFFFbtDzHAE-Tn9SwRhQuvA7sfzFijz0VE'; // Token del bot
-
-  // ---------- FIREBASE CONFIGURACIÓN ----------
-  const firebaseConfig = {
-    apiKey: "AIzaSyCC6I-aFKI60OTH5fjkYF_8aa2rmWyvJj8",
-    authDomain: "wireguardshop.firebaseapp.com",
-    databaseURL: "https://wireguardshop-default-rtdb.firebaseio.com",
-    projectId: "wireguardshop",
-    storageBucket: "wireguardshop.firebasestorage.app",
-    messagingSenderId: "707540543111",
-    appId: "1:707540543111:web:c00c745c9764337202ba22",
-    measurementId: "G-BMGVHJ78FS"
-  };
-
-  if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "PEGAR_AQUI_API_KEY") {
-    try {
-      firebase.initializeApp(firebaseConfig);
-      console.log("🚀 Firebase inicializado correctamente.");
-    } catch (e) {
-      if (e.code !== 'app/duplicate-app') {
-        console.error("❌ Error al inicializar Firebase:", e);
-      }
-    }
-  } else {
-    console.warn("⚠️ Firebase no está configurado. Por favor añade tus credenciales.");
-  }
 
   // ---------- VARIABLES GLOBALES ----------
   let tg = null;
@@ -114,7 +88,6 @@
   let manualFileBase64 = null;
   let currentProductForPurchase = null;
   let selectedImageBase64 = null;
-  let firebaseListeners = { products: null, purchases: null, configs: null };
 
   // ---------- MODO OSCURO ----------
   function applyDarkMode(enabled) {
@@ -138,7 +111,7 @@
   }
 
   // ---------- DETECCIÓN DE TELEGRAM ----------
-  function waitForTelegram(timeout = 3000) {
+  function waitForTelegram(timeout = 5000) {
     return new Promise((resolve) => {
       if (window.Telegram && window.Telegram.WebApp) {
         resolve(window.Telegram.WebApp);
@@ -158,92 +131,38 @@
     });
   }
 
-  // ---------- SINCRONIZACIÓN ENTRE PESTAÑAS ----------
-  function setupTabSync() {
-    // Escuchar cambios en localStorage desde otras pestañas
-    window.addEventListener('storage', (e) => {
-      if (e.key === 'telegram_shop_products') {
-        try {
-          products = JSON.parse(e.newValue || '[]');
-          renderStore();
-          renderAdminList();
-          populateManualSelect();
-          showToast('🔄 Productos actualizados desde otra pestaña', 1500);
-        } catch (err) { console.error('Error sincronizando productos:', err); }
-      }
-      if (e.key === 'telegram_shop_purchases') {
-        try {
-          purchases = JSON.parse(e.newValue || '[]');
-          renderUsersList();
-          renderUserPurchases();
-          showToast('🔄 Compras actualizadas desde otra pestaña', 1500);
-        } catch (err) { console.error('Error sincronizando compras:', err); }
-      }
-      if (e.key === 'payment_configs') {
-        try {
-          paymentConfigs = JSON.parse(e.newValue || '{}');
-          renderPaymentConfigForm();
-          showToast('🔄 Configuración actualizada desde otra pestaña', 1500);
-        } catch (err) { console.error('Error sincronizando configs:', err); }
-      }
-    });
-  }
-
-  function cleanupFirebaseListeners() {
-    if (firebaseListeners.products) firebaseListeners.products();
-    if (firebaseListeners.purchases) firebaseListeners.purchases();
-    if (firebaseListeners.configs) firebaseListeners.configs();
-    console.log("🧹 Listeners de Firebase desuscriptos");
-  }
-
-  // Limpiar listeners al cerrar la pestaña
-  window.addEventListener('beforeunload', cleanupFirebaseListeners);
-
   // ---------- INICIALIZACIÓN ----------
   async function init() {
     initDarkMode();
-    setupTabSync();
     console.log('🚀 Iniciando Wireguard Shop...');
-    tg = await waitForTelegram(3000);
+    tg = await waitForTelegram(5000);
+
     if (tg) {
       isTelegram = true;
       tg.ready();
       tg.expand();
-      const initData = tg.initDataUnsafe || {};
 
-      // Intentar obtener usuario de Telegram o de la URL (fallback para KeyboardButton)
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlUid = urlParams.get('uid');
-      const urlName = urlParams.get('name');
-
-      if (initData.user && initData.user.id) {
+      const userData = tg.initDataUnsafe?.user;
+      if (userData && userData.id) {
         currentUser = {
-          id: initData.user.id,
-          first_name: initData.user.first_name,
-          last_name: initData.user.last_name,
-          username: initData.user.username
+          id: userData.id,
+          first_name: userData.first_name,
+          last_name: userData.last_name,
+          username: userData.username
         };
-      } else if (urlUid) {
-        currentUser = {
-          id: parseInt(urlUid),
-          first_name: decodeURIComponent(urlName || 'Usuario'),
-          last_name: '',
-          username: ''
-        };
-      }
-
-      if (currentUser) {
         isAdmin = ADMIN_IDS.includes(currentUser.id);
-        console.log('👤 Usuario detectado:', currentUser);
+        console.log('👤 Usuario Telegram:', currentUser);
+        console.log('👑 ¿Es admin?:', isAdmin);
       } else {
-        console.error('❌ No se pudo identificar al usuario.');
+        console.warn('⚠️ No se pudieron obtener datos del usuario de Telegram.');
         currentUser = { id: 0, first_name: 'Invitado', username: null };
         isAdmin = false;
       }
     } else {
-      // Modo web fuera de Telegram
-      currentUser = { id: 12345, first_name: 'Usuario Web', username: 'webuser' };
-      isAdmin = false;
+      console.log('💻 Ejecutando fuera de Telegram (modo desarrollo).');
+      isTelegram = false;
+      currentUser = { id: 123456, first_name: 'Demo', username: 'demo' };
+      isAdmin = false; // Cambiar a true para probar localmente como admin
     }
 
     loadProducts();
@@ -257,142 +176,55 @@
     populateManualSelect();
     renderPaymentConfigForm();
     setupEventListeners();
-
-    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-      console.log("✅ Firebase inicializado correctamente.");
-      firebase.database().ref('.info/connected').on('value', (snap) => {
-        if (snap.val() === true) {
-          console.log("📡 Conectado a Realtime Database.");
-        } else {
-          console.warn("🚫 Desconectado de Realtime Database. Revisa tus reglas de seguridad o URL.");
-        }
-      });
-    } else {
-      console.error("❌ Firebase NO inicializado. Revisa tus credenciales en script.js.");
-    }
   }
 
   // ---------- GESTIÓN DE DATOS ----------
   function loadProducts() {
-    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-      console.log("🔥 Intentando conectar con Firebase Realtime Database...");
-      // Desuscribir listener anterior si existe
-      if (firebaseListeners.products) firebaseListeners.products();
-      
-      firebaseListeners.products = firebase.database().ref('products').on('value', (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-          console.log("📦 Datos recibidos de Firebase.");
-          products = Array.isArray(data) ? data : Object.values(data);
-        } else {
-          console.log("❓ Firebase está vacío. Verificando si hay datos locales para migrar...");
-          const stored = localStorage.getItem('telegram_shop_products');
-          if (stored) {
-            try {
-              products = JSON.parse(stored);
-              console.log("🚚 Migrando datos locales a Firebase...");
-              saveProducts(); // Subir a Firebase
-            } catch (e) { products = []; }
-          } else {
-            products = [
-              { id: '1', name: 'Wireguard VPN 30 días', description: 'Navegación nacional con Nauta/WiFi ETECSA', price: 342, image: '🔒', inStock: true }
-            ];
-            saveProducts();
-          }
-        }
-        console.log("📋 Total productos:", products.length);
-        products = products.map(p => ({ ...p, inStock: p.inStock !== undefined ? p.inStock : true }));
-        populateManualSelect();
-        renderStore();
-        renderAdminList();
-        if (typeof renderPaymentConfigForm === 'function') renderPaymentConfigForm();
-      }, (error) => {
-        console.error("❌ Error de lectura en Firebase:", error);
-        showToast("⚠️ Error de conexión con la base de datos", 3000);
-      });
+    const stored = localStorage.getItem('telegram_shop_products');
+    if (stored) {
+      try { products = JSON.parse(stored); } catch(e) { products = []; }
     } else {
-      console.warn("⚠️ Firebase no detectado, usando almacenamiento local.");
-      const stored = localStorage.getItem('telegram_shop_products');
-      if (stored) {
-        try { products = JSON.parse(stored); } catch (e) { products = []; }
-      }
-      products = products.map(p => ({ ...p, inStock: p.inStock !== undefined ? p.inStock : true }));
-      renderStore();
-      renderAdminList();
+      products = [
+        { id: '1', name: 'Wireguard VPN 30 días', description: 'Navegación nacional con Nauta/WiFi ETECSA', price: 342, image: '🔒', inStock: true }
+      ];
+      saveProducts();
     }
+    products = products.map(p => ({ ...p, inStock: p.inStock !== undefined ? p.inStock : true }));
+    saveProducts();
+    populateManualSelect();
+    renderStore();
+    renderAdminList();
+    renderPaymentConfigForm();
   }
 
   function saveProducts() {
-    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-      firebase.database().ref('products').set(products).then(() => {
-        console.log("✅ Productos guardados en Firebase");
-      }).catch(err => {
-        console.error("❌ Error al guardar productos:", err);
-        showToast("❌ Error de sincronización", 2000);
-      });
-    } else {
-      localStorage.setItem('telegram_shop_products', JSON.stringify(products));
-      populateManualSelect();
-      if (typeof renderPaymentConfigForm === 'function') renderPaymentConfigForm();
-    }
+    localStorage.setItem('telegram_shop_products', JSON.stringify(products));
+    populateManualSelect();
+    renderPaymentConfigForm();
   }
 
   function loadPurchases() {
-    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-      console.log("🔥 Cargando compras desde Firebase...");
-      // Desuscribir listener anterior si existe
-      if (firebaseListeners.purchases) firebaseListeners.purchases();
-      
-      firebaseListeners.purchases = firebase.database().ref('purchases').on('value', (snapshot) => {
-        const data = snapshot.val() || [];
-        purchases = Array.isArray(data) ? data : Object.values(data);
-        console.log("🛍️ Compras sincronizadas:", purchases.length);
-        renderUsersList();
-        renderUserPurchases();
-      });
-    } else {
-      const stored = localStorage.getItem('telegram_shop_purchases');
-      if (stored) {
-        try { purchases = JSON.parse(stored); } catch (e) { purchases = []; }
-      }
+    const stored = localStorage.getItem('telegram_shop_purchases');
+    if (stored) {
+      try { purchases = JSON.parse(stored); } catch(e) { purchases = []; }
     }
+    renderUsersList();
+    renderUserPurchases();
   }
 
   function savePurchases() {
-    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-      firebase.database().ref('purchases').set(purchases).then(() => {
-        console.log("✅ Compras guardadas en Firebase");
-      }).catch(err => {
-        console.error("❌ Error al guardar compras:", err);
-      });
-    } else {
-      localStorage.setItem('telegram_shop_purchases', JSON.stringify(purchases));
-    }
+    localStorage.setItem('telegram_shop_purchases', JSON.stringify(purchases));
   }
 
   function loadPaymentConfigs() {
-    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-      // Desuscribir listener anterior si existe
-      if (firebaseListeners.configs) firebaseListeners.configs();
-      
-      firebaseListeners.configs = firebase.database().ref('paymentConfigs').on('value', (snapshot) => {
-        paymentConfigs = snapshot.val() || {};
-        renderPaymentConfigForm();
-      });
-    } else {
-      const stored = localStorage.getItem('payment_configs');
-      if (stored) {
-        try { paymentConfigs = JSON.parse(stored); } catch (e) { paymentConfigs = {}; }
-      }
+    const stored = localStorage.getItem('payment_configs');
+    if (stored) {
+      try { paymentConfigs = JSON.parse(stored); } catch(e) { paymentConfigs = {}; }
     }
   }
 
   function savePaymentConfigs() {
-    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-      firebase.database().ref('paymentConfigs').set(paymentConfigs);
-    } else {
-      localStorage.setItem('payment_configs', JSON.stringify(paymentConfigs));
-    }
+    localStorage.setItem('payment_configs', JSON.stringify(paymentConfigs));
   }
 
   function getPaymentConfigForProduct(productId) {
@@ -486,13 +318,13 @@
       editBtn.innerHTML = '✏️';
       editBtn.onclick = (e) => { e.stopPropagation(); openEditModal(product); };
       actionsDiv.appendChild(editBtn);
-
+      
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'admin-delete-btn';
       deleteBtn.innerHTML = '🗑️';
       deleteBtn.onclick = (e) => { e.stopPropagation(); confirmDeleteProduct(product.id); };
       actionsDiv.appendChild(deleteBtn);
-
+      
       const stockInfo = document.createElement('span');
       stockInfo.style.marginLeft = '8px';
       stockInfo.style.fontSize = '12px';
@@ -504,8 +336,8 @@
       buyBtn.className = 'buy-btn';
       buyBtn.textContent = product.inStock ? 'Comprar' : 'Agotado';
       buyBtn.disabled = !product.inStock;
-      buyBtn.onclick = (e) => {
-        e.stopPropagation();
+      buyBtn.onclick = (e) => { 
+        e.stopPropagation(); 
         if (product.inStock) openPaymentModal(product);
       };
       actionsDiv.appendChild(buyBtn);
@@ -584,7 +416,7 @@
   function renderPaymentConfigForm() {
     const container = document.getElementById('paymentConfigContainer');
     if (!container) return;
-
+    
     let html = `
       <div class="form-group">
         <label>Seleccionar producto a configurar</label>
@@ -595,7 +427,7 @@
       html += `<option value="${p.id}">${escapeHtml(p.name)}</option>`;
     });
     html += `</select></div>`;
-
+    
     html += `
       <div id="configFormFields" style="display: none;">
         <div class="form-group">
@@ -629,10 +461,10 @@
       </div>
     `;
     container.innerHTML = html;
-
+    
     const select = document.getElementById('configProductSelect');
     const fieldsDiv = document.getElementById('configFormFields');
-
+    
     select.addEventListener('change', () => {
       const productId = select.value;
       if (!productId) {
@@ -648,7 +480,7 @@
       document.getElementById('configMethods').value = JSON.stringify(config.paymentMethods, null, 2);
       fieldsDiv.style.display = 'block';
     });
-
+    
     const saveBtn = document.getElementById('savePaymentConfigBtn');
     if (saveBtn) {
       saveBtn.addEventListener('click', () => {
@@ -674,7 +506,7 @@
           if (currentProductForPurchase && currentProductForPurchase.id === productId) {
             renderPaymentModalContent(productId);
           }
-        } catch (e) {
+        } catch(e) {
           showToast('❌ Error en formato JSON', 2000);
         }
       });
@@ -685,13 +517,13 @@
     const config = getPaymentConfigForProduct(productId);
     document.querySelector('.payment-subtitle').textContent = config.subtitle;
     document.querySelector('.plan-badge').textContent = config.planName;
-
+    
     const termsList = document.querySelector('.terms-list');
     termsList.innerHTML = config.terms.map(t => `<li>${t}</li>`).join('');
-
+    
     document.getElementById('cupPrice').textContent = `${config.prices.cup} CUP`;
     document.getElementById('saldoPrice').textContent = `${config.prices.saldo} CUP`;
-
+    
     const methodsContainer = document.querySelector('.payment-methods-section');
     methodsContainer.innerHTML = '<label>Métodos de Pago Disponibles</label>';
     config.paymentMethods.forEach(m => {
@@ -700,7 +532,7 @@
       div.innerHTML = `<span>${escapeHtml(m.name)}</span><span class="payment-number">${escapeHtml(m.number)}</span>`;
       methodsContainer.appendChild(div);
     });
-
+    
     const select = document.getElementById('paymentMethod');
     select.innerHTML = '<option value="">Selecciona el método de pago</option>';
     config.paymentMethods.forEach((m, i) => {
@@ -722,11 +554,11 @@
     paymentProof.value = '';
     fileName.textContent = 'Ningún archivo seleccionado';
     contractType.value = 'nuevo';
-
+    
     const previewContainer = document.querySelector('.file-input-wrapper');
     const existingPreview = previewContainer.querySelector('.image-preview');
     if (existingPreview) existingPreview.remove();
-
+    
     renderPaymentModalContent(product.id);
     paymentModal.style.display = 'flex';
   }
@@ -745,17 +577,11 @@
         return;
       }
       fileName.textContent = file.name;
-      showToast('⏳ Subiendo imagen...', 2000);
-      try {
-        if (isTelegram) {
-          selectedImageBase64 = await uploadProofToTelegram(file);
-          showToast('✅ Imagen subida correctamente', 1500);
-        } else {
-          const reader = new FileReader();
-          reader.onload = (ev) => { selectedImageBase64 = ev.target.result; };
-          reader.readAsDataURL(file);
-          showToast('✅ Imagen lista (modo demo)', 1000);
-        }
+      showToast('⏳ Preparando imagen...', 2000);
+      
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        selectedImageBase64 = ev.target.result;
         const wrapper = document.querySelector('.file-input-wrapper');
         let preview = wrapper.querySelector('.image-preview');
         if (!preview) {
@@ -763,33 +589,11 @@
           preview.className = 'image-preview';
           wrapper.appendChild(preview);
         }
-        preview.src = URL.createObjectURL(file);
-      } catch (err) {
-        console.error(err);
-        showToast('❌ Error al subir la imagen', 2500);
-        selectedImageBase64 = null;
-      }
+        preview.src = selectedImageBase64;
+        showToast('✅ Imagen lista', 1000);
+      };
+      reader.readAsDataURL(file);
     });
-  }
-
-  async function uploadProofToTelegram(file) {
-    const adminId = ADMIN_IDS[0];
-    const clientName = currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : '');
-    const productName = currentProductForPurchase ? currentProductForPurchase.name : 'Producto';
-
-    const formData = new FormData();
-    formData.append('chat_id', adminId);
-    formData.append('photo', file);
-    formData.append('caption', `🧾 Comprobante de ${clientName} (ID: ${currentUser.id})${currentUser.username ? ' @' + currentUser.username : ''}\nProducto: ${productName}`);
-
-    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-      method: 'POST',
-      body: formData
-    });
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.description || 'Error al subir foto');
-    const photos = json.result.photo;
-    return photos[photos.length - 1].file_id;
   }
 
   if (verifyCouponBtn) {
@@ -803,11 +607,11 @@
     if (!acceptTerms.checked) { showToast('⚠️ Debes aceptar los términos', 2000); return; }
     if (!paymentMethod.value) { showToast('⚠️ Selecciona método de pago', 2000); return; }
     if (!contractType.value) { showToast('⚠️ Selecciona tipo de contrato', 2000); return; }
-
+    
     const methodIndex = parseInt(paymentMethod.value);
     const config = getPaymentConfigForProduct(currentProductForPurchase.id);
     const selectedMethod = config.paymentMethods[methodIndex];
-
+    
     const purchaseData = {
       action: 'purchase_with_details',
       product: currentProductForPurchase,
@@ -820,13 +624,13 @@
       },
       timestamp: new Date().toISOString()
     };
-
+    
     const dataStr = JSON.stringify(purchaseData);
     if (new Blob([dataStr]).size > 4096) {
       showToast('⚠️ Los datos son demasiado grandes', 3000);
       return;
     }
-
+    
     const purchase = {
       userId: currentUser.id,
       userName: currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : ''),
@@ -837,7 +641,7 @@
     };
     purchases.push(purchase);
     savePurchases();
-
+    
     if (isTelegram) {
       tg.HapticFeedback?.notificationOccurred('success');
       tg.sendData(dataStr);
@@ -846,7 +650,7 @@
       console.log('Purchase data:', purchaseData);
       showToast('✅ Compra simulada', 2000);
     }
-
+    
     renderUserPurchases();
     renderUsersList();
     closePaymentModalHandler();
@@ -859,65 +663,48 @@
     showToast(`📝 Preparando envío para ${userDisplayName || 'usuario ' + userId}`, 2000);
   }
 
-  async function handleManualSend() {
+  function handleManualSend() {
     const targetUserId = document.getElementById('targetUserId').value.trim();
     const productId = manualProductSelect.value;
     const customMessage = document.getElementById('customMessage').value.trim();
-
+    
     if (!targetUserId || !productId) {
       showToast('⚠️ Completa ID y producto', 2000);
       return;
     }
-
+    
     const product = products.find(p => p.id === productId);
-    showToast('⏳ Enviando...', 2000);
-
-    try {
-      // 1. Enviar el mensaje de texto informativo al cliente
-      const textMsg = `📦 *${product.name}*\n${product.description || ''}\n\n${customMessage || '¡Gracias por tu compra!'}`;
-      const resMsg = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: targetUserId,
-          text: textMsg,
-          parse_mode: 'Markdown'
-        })
-      });
-
-      const jsonMsg = await resMsg.json();
-      if (!jsonMsg.ok) throw new Error(jsonMsg.description);
-
-      // 2. Enviar el archivo adjunto si existe
-      if (manualFileBase64) {
-        showToast('⏳ Subiendo archivo...', 2000);
-        const blob = await (await fetch(manualFileBase64)).blob();
-        const formData = new FormData();
-        formData.append('chat_id', targetUserId);
-        formData.append('document', blob, `archivo_${product.name.replace(/\s+/g, '_')}.bin`);
-        
-        const resDoc = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, {
-          method: 'POST',
-          body: formData
-        });
-        const jsonDoc = await resDoc.json();
-        if (!jsonDoc.ok) throw new Error(jsonDoc.description);
-      }
-
-      showToast('✅ Producto enviado con éxito', 2500);
-      
-      // Limpiar formulario
-      document.getElementById('targetUserId').value = '';
-      manualProductSelect.value = '';
-      document.getElementById('customMessage').value = '';
-      if (manualAttachment) manualAttachment.value = '';
-      if (attachmentFileName) attachmentFileName.textContent = 'Ningún archivo seleccionado';
-      manualFileBase64 = null;
-
-    } catch (err) {
-      console.error('Error en envío manual:', err);
-      showToast('❌ Error: ' + err.message, 4000);
+    const sendData = {
+      action: 'manual_send',
+      target_user_id: targetUserId,
+      product: product,
+      custom_message: customMessage || `Aquí está tu producto: ${product.name}`,
+      attachment: manualFileBase64 || null
+    };
+    
+    const dataStr = JSON.stringify(sendData);
+    const sizeInBytes = new Blob([dataStr]).size;
+    console.log(`📏 Tamaño del envío: ${sizeInBytes} bytes (límite 4096)`);
+    
+    if (sizeInBytes > 4096) {
+      showToast(`⚠️ Datos demasiado grandes (${Math.round(sizeInBytes/1024)} KB)`, 3000);
+      return;
     }
+    
+    if (isTelegram) {
+      tg.sendData(dataStr);
+      tg.showPopup({ title: '📨 Envío solicitado', message: 'El bot procesará el envío.' });
+    } else {
+      console.log('📤 Datos enviados (demo):', sendData);
+      showToast(`📨 Enviado a ${targetUserId} (demo)`, 2000);
+    }
+    
+    document.getElementById('targetUserId').value = '';
+    manualProductSelect.value = '';
+    document.getElementById('customMessage').value = '';
+    if (manualAttachment) manualAttachment.value = '';
+    if (attachmentFileName) attachmentFileName.textContent = 'Ningún archivo seleccionado';
+    manualFileBase64 = null;
   }
 
   // ---------- EDICIÓN DE PRODUCTOS ----------
@@ -940,7 +727,7 @@
     const id = editProductId.value;
     const productIndex = products.findIndex(p => p.id === id);
     if (productIndex === -1) return;
-
+    
     const updatedProduct = {
       ...products[productIndex],
       name: editProductName.value.trim(),
@@ -949,7 +736,7 @@
       image: editProductImage.value.trim() || '📦',
       inStock: editProductStock.value === 'true'
     };
-
+    
     products[productIndex] = updatedProduct;
     saveProducts();
     renderStore();
@@ -1040,7 +827,7 @@
     if (addProductForm) addProductForm.onsubmit = handleAddProduct;
     const sendManualBtn = document.getElementById('sendManualProductBtn');
     if (sendManualBtn) sendManualBtn.onclick = handleManualSend;
-
+    
     if (manualAttachment) {
       manualAttachment.addEventListener('change', (e) => {
         const file = e.target.files[0];
@@ -1055,25 +842,24 @@
         }
       });
     }
-
+    
     const exportBtn = document.getElementById('exportDataBtn');
     if (exportBtn) exportBtn.onclick = () => {
       const exportPayload = JSON.stringify({ action: 'export_data', data: { products, purchases, paymentConfigs } });
       if (isTelegram) {
         tg.sendData(exportPayload);
       } else {
-        console.log('Export:', { products, purchases, paymentConfigs });
-        showToast('📤 Datos en consola (modo demo)', 1500);
+        console.log('📊 Export:', { products, purchases, paymentConfigs });
+        showToast('📤 Datos en consola', 1500);
       }
     };
     const clearPurchasesBtn = document.getElementById('clearPurchasesBtn');
     if (clearPurchasesBtn) {
       clearPurchasesBtn.onclick = () => {
         modalTitle.textContent = 'Limpiar historial';
-        modalMessage.textContent = '¿Seguro que deseas borrar tu historial de compras personal?';
+        modalMessage.textContent = '¿Seguro que deseas borrar tu historial de compras?';
         modalOverlay.style.display = 'flex';
         modalConfirm.onclick = () => {
-          // Filtrar solo las compras que NO pertenecen al usuario actual
           purchases = purchases.filter(p => p.userId !== currentUser.id);
           savePurchases();
           renderUserPurchases();
