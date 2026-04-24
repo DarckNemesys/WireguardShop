@@ -22,7 +22,9 @@
       firebase.initializeApp(firebaseConfig);
       console.log("🚀 Firebase inicializado correctamente.");
     } catch (e) {
-      console.error("❌ Error al inicializar Firebase:", e);
+      if (e.code !== 'app/duplicate-app') {
+        console.error("❌ Error al inicializar Firebase:", e);
+      }
     }
   } else {
     console.warn("⚠️ Firebase no está configurado. Por favor añade tus credenciales.");
@@ -112,6 +114,7 @@
   let manualFileBase64 = null;
   let currentProductForPurchase = null;
   let selectedImageBase64 = null;
+  let firebaseListeners = { products: null, purchases: null, configs: null };
 
   // ---------- MODO OSCURO ----------
   function applyDarkMode(enabled) {
@@ -156,9 +159,50 @@
   }
 
   // ---------- SINCRONIZACIÓN ENTRE PESTAÑAS ----------
+  function setupTabSync() {
+    // Escuchar cambios en localStorage desde otras pestañas
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'telegram_shop_products') {
+        try {
+          products = JSON.parse(e.newValue || '[]');
+          renderStore();
+          renderAdminList();
+          populateManualSelect();
+          showToast('🔄 Productos actualizados desde otra pestaña', 1500);
+        } catch (err) { console.error('Error sincronizando productos:', err); }
+      }
+      if (e.key === 'telegram_shop_purchases') {
+        try {
+          purchases = JSON.parse(e.newValue || '[]');
+          renderUsersList();
+          renderUserPurchases();
+          showToast('🔄 Compras actualizadas desde otra pestaña', 1500);
+        } catch (err) { console.error('Error sincronizando compras:', err); }
+      }
+      if (e.key === 'payment_configs') {
+        try {
+          paymentConfigs = JSON.parse(e.newValue || '{}');
+          renderPaymentConfigForm();
+          showToast('🔄 Configuración actualizada desde otra pestaña', 1500);
+        } catch (err) { console.error('Error sincronizando configs:', err); }
+      }
+    });
+  }
+
+  function cleanupFirebaseListeners() {
+    if (firebaseListeners.products) firebaseListeners.products();
+    if (firebaseListeners.purchases) firebaseListeners.purchases();
+    if (firebaseListeners.configs) firebaseListeners.configs();
+    console.log("🧹 Listeners de Firebase desuscriptos");
+  }
+
+  // Limpiar listeners al cerrar la pestaña
+  window.addEventListener('beforeunload', cleanupFirebaseListeners);
+
   // ---------- INICIALIZACIÓN ----------
   async function init() {
     initDarkMode();
+    setupTabSync();
     console.log('🚀 Iniciando Wireguard Shop...');
     tg = await waitForTelegram(3000);
     if (tg) {
@@ -231,26 +275,46 @@
   // ---------- GESTIÓN DE DATOS ----------
   function loadProducts() {
     if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-      console.log("🔥 Cargando productos desde Firebase...");
-      firebase.database().ref('products').on('value', (snapshot) => {
-        const data = snapshot.val() || [];
-        products = Array.isArray(data) ? data : Object.values(data);
-        console.log("📦 Productos sincronizados:", products.length);
+      console.log("🔥 Intentando conectar con Firebase Realtime Database...");
+      // Desuscribir listener anterior si existe
+      if (firebaseListeners.products) firebaseListeners.products();
+      
+      firebaseListeners.products = firebase.database().ref('products').on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          console.log("📦 Datos recibidos de Firebase.");
+          products = Array.isArray(data) ? data : Object.values(data);
+        } else {
+          console.log("❓ Firebase está vacío. Verificando si hay datos locales para migrar...");
+          const stored = localStorage.getItem('telegram_shop_products');
+          if (stored) {
+            try {
+              products = JSON.parse(stored);
+              console.log("🚚 Migrando datos locales a Firebase...");
+              saveProducts(); // Subir a Firebase
+            } catch (e) { products = []; }
+          } else {
+            products = [
+              { id: '1', name: 'Wireguard VPN 30 días', description: 'Navegación nacional con Nauta/WiFi ETECSA', price: 342, image: '🔒', inStock: true }
+            ];
+            saveProducts();
+          }
+        }
+        console.log("📋 Total productos:", products.length);
         products = products.map(p => ({ ...p, inStock: p.inStock !== undefined ? p.inStock : true }));
         populateManualSelect();
         renderStore();
         renderAdminList();
         if (typeof renderPaymentConfigForm === 'function') renderPaymentConfigForm();
+      }, (error) => {
+        console.error("❌ Error de lectura en Firebase:", error);
+        showToast("⚠️ Error de conexión con la base de datos", 3000);
       });
     } else {
+      console.warn("⚠️ Firebase no detectado, usando almacenamiento local.");
       const stored = localStorage.getItem('telegram_shop_products');
       if (stored) {
         try { products = JSON.parse(stored); } catch (e) { products = []; }
-      } else {
-        products = [
-          { id: '1', name: 'Wireguard VPN 30 días', description: 'Navegación nacional con Nauta/WiFi ETECSA', price: 342, image: '🔒', inStock: true }
-        ];
-        saveProducts();
       }
       products = products.map(p => ({ ...p, inStock: p.inStock !== undefined ? p.inStock : true }));
       renderStore();
@@ -276,7 +340,10 @@
   function loadPurchases() {
     if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
       console.log("🔥 Cargando compras desde Firebase...");
-      firebase.database().ref('purchases').on('value', (snapshot) => {
+      // Desuscribir listener anterior si existe
+      if (firebaseListeners.purchases) firebaseListeners.purchases();
+      
+      firebaseListeners.purchases = firebase.database().ref('purchases').on('value', (snapshot) => {
         const data = snapshot.val() || [];
         purchases = Array.isArray(data) ? data : Object.values(data);
         console.log("🛍️ Compras sincronizadas:", purchases.length);
@@ -305,7 +372,10 @@
 
   function loadPaymentConfigs() {
     if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-      firebase.database().ref('paymentConfigs').on('value', (snapshot) => {
+      // Desuscribir listener anterior si existe
+      if (firebaseListeners.configs) firebaseListeners.configs();
+      
+      firebaseListeners.configs = firebase.database().ref('paymentConfigs').on('value', (snapshot) => {
         paymentConfigs = snapshot.val() || {};
         renderPaymentConfigForm();
       });
@@ -710,7 +780,7 @@
     const formData = new FormData();
     formData.append('chat_id', adminId);
     formData.append('photo', file);
-    formData.append('caption', `🧾 Comprobante de ${clientName} (ID: ${currentUser.id})\nProducto: ${productName}`);
+    formData.append('caption', `🧾 Comprobante de ${clientName} (ID: ${currentUser.id})${currentUser.username ? ' @' + currentUser.username : ''}\nProducto: ${productName}`);
 
     const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
       method: 'POST',
@@ -789,7 +859,7 @@
     showToast(`📝 Preparando envío para ${userDisplayName || 'usuario ' + userId}`, 2000);
   }
 
-  function handleManualSend() {
+  async function handleManualSend() {
     const targetUserId = document.getElementById('targetUserId').value.trim();
     const productId = manualProductSelect.value;
     const customMessage = document.getElementById('customMessage').value.trim();
@@ -800,37 +870,54 @@
     }
 
     const product = products.find(p => p.id === productId);
-    const sendData = {
-      action: 'manual_send',
-      target_user_id: targetUserId,
-      product: product,
-      custom_message: customMessage || `Aquí está tu producto: ${product.name}`,
-      attachment: manualFileBase64 || null
-    };
+    showToast('⏳ Enviando...', 2000);
 
-    const dataStr = JSON.stringify(sendData);
-    const sizeInBytes = new Blob([dataStr]).size;
-    console.log(`Tamaño del JSON a enviar: ${sizeInBytes} bytes (límite 4096)`);
+    try {
+      // 1. Enviar el mensaje de texto informativo al cliente
+      const textMsg = `📦 *${product.name}*\n${product.description || ''}\n\n${customMessage || '¡Gracias por tu compra!'}`;
+      const resMsg = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: targetUserId,
+          text: textMsg,
+          parse_mode: 'Markdown'
+        })
+      });
 
-    if (sizeInBytes > 4096) {
-      showToast(`⚠️ El archivo es demasiado grande (${Math.round(sizeInBytes / 1024)} KB). Máximo 4 KB.`, 4000);
-      return;
+      const jsonMsg = await resMsg.json();
+      if (!jsonMsg.ok) throw new Error(jsonMsg.description);
+
+      // 2. Enviar el archivo adjunto si existe
+      if (manualFileBase64) {
+        showToast('⏳ Subiendo archivo...', 2000);
+        const blob = await (await fetch(manualFileBase64)).blob();
+        const formData = new FormData();
+        formData.append('chat_id', targetUserId);
+        formData.append('document', blob, `archivo_${product.name.replace(/\s+/g, '_')}.bin`);
+        
+        const resDoc = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, {
+          method: 'POST',
+          body: formData
+        });
+        const jsonDoc = await resDoc.json();
+        if (!jsonDoc.ok) throw new Error(jsonDoc.description);
+      }
+
+      showToast('✅ Producto enviado con éxito', 2500);
+      
+      // Limpiar formulario
+      document.getElementById('targetUserId').value = '';
+      manualProductSelect.value = '';
+      document.getElementById('customMessage').value = '';
+      if (manualAttachment) manualAttachment.value = '';
+      if (attachmentFileName) attachmentFileName.textContent = 'Ningún archivo seleccionado';
+      manualFileBase64 = null;
+
+    } catch (err) {
+      console.error('Error en envío manual:', err);
+      showToast('❌ Error: ' + err.message, 4000);
     }
-
-    if (isTelegram) {
-      tg.sendData(dataStr);
-      tg.showPopup({ title: '📨 Envío solicitado', message: 'El bot procesará el envío.' });
-    } else {
-      console.log('Datos enviados:', sendData);
-      showToast(`📨 Enviado a ${targetUserId} (demo)`, 2000);
-    }
-
-    document.getElementById('targetUserId').value = '';
-    manualProductSelect.value = '';
-    document.getElementById('customMessage').value = '';
-    if (manualAttachment) manualAttachment.value = '';
-    if (attachmentFileName) attachmentFileName.textContent = 'Ningún archivo seleccionado';
-    manualFileBase64 = null;
   }
 
   // ---------- EDICIÓN DE PRODUCTOS ----------
