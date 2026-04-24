@@ -5,6 +5,24 @@
   const ADMIN_IDS = [7401051294]; // ← TU ID REAL
   const BOT_TOKEN = '8188077724:AAFFFbtDzHAE-Tn9SwRhQuvA7sfzFijz0VE'; // Token del bot
 
+  // ---------- FIREBASE CONFIGURACIÓN ----------
+  const firebaseConfig = {
+    apiKey: "AIzaSyCC6I-aFKI60OTH5fjkYF_8aa2rmWyvJj8",
+    authDomain: "wireguardshop.firebaseapp.com",
+    databaseURL: "https://wireguardshop-default-rtdb.firebaseio.com",
+    projectId: "wireguardshop",
+    storageBucket: "wireguardshop.firebasestorage.app",
+    messagingSenderId: "707540543111",
+    appId: "1:707540543111:web:c00c745c9764337202ba22",
+    measurementId: "G-BMGVHJ78FS"
+  };
+
+  if (firebaseConfig.apiKey !== "PEGAR_AQUI_API_KEY") {
+    firebase.initializeApp(firebaseConfig);
+  } else {
+    console.warn("⚠️ Firebase no está configurado. Por favor añade tus credenciales.");
+  }
+
   // ---------- VARIABLES GLOBALES ----------
   let tg = null;
   let isTelegram = false;
@@ -133,22 +151,7 @@
   }
 
   // ---------- SINCRONIZACIÓN ENTRE PESTAÑAS ----------
-  window.addEventListener('storage', (e) => {
-    if (e.key === 'telegram_shop_products') {
-      loadProducts();
-      renderStore();
-      renderAdminList();
-      populateManualSelect();
-      renderPaymentConfigForm();
-    } else if (e.key === 'telegram_shop_purchases') {
-      loadPurchases();
-      renderUsersList();
-      renderUserPurchases();
-    } else if (e.key === 'payment_configs') {
-      loadPaymentConfigs();
-      renderPaymentConfigForm();
-    }
-  });
+  // Eliminado porque Firebase sincroniza automáticamente todos los clientes.
 
   // ---------- INICIALIZACIÓN ----------
   async function init() {
@@ -196,45 +199,84 @@
 
   // ---------- GESTIÓN DE DATOS ----------
   function loadProducts() {
-    const stored = localStorage.getItem('telegram_shop_products');
-    if (stored) {
-      try { products = JSON.parse(stored); } catch (e) { products = []; }
+    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+      firebase.database().ref('products').on('value', (snapshot) => {
+        const data = snapshot.val() || [];
+        products = Array.isArray(data) ? data : Object.values(data);
+        products = products.map(p => ({ ...p, inStock: p.inStock !== undefined ? p.inStock : true }));
+        populateManualSelect();
+        renderStore();
+        renderAdminList();
+        if (typeof renderPaymentConfigForm === 'function') renderPaymentConfigForm();
+      });
     } else {
-      products = [
-        { id: '1', name: 'Wireguard VPN 30 días', description: 'Navegación nacional con Nauta/WiFi ETECSA', price: 342, image: '🔒', inStock: true }
-      ];
-      saveProducts();
+      const stored = localStorage.getItem('telegram_shop_products');
+      if (stored) {
+        try { products = JSON.parse(stored); } catch (e) { products = []; }
+      } else {
+        products = [
+          { id: '1', name: 'Wireguard VPN 30 días', description: 'Navegación nacional con Nauta/WiFi ETECSA', price: 342, image: '🔒', inStock: true }
+        ];
+        saveProducts();
+      }
+      products = products.map(p => ({ ...p, inStock: p.inStock !== undefined ? p.inStock : true }));
     }
-    products = products.map(p => ({ ...p, inStock: p.inStock !== undefined ? p.inStock : true }));
-    saveProducts();
   }
 
   function saveProducts() {
-    localStorage.setItem('telegram_shop_products', JSON.stringify(products));
-    populateManualSelect();
-    if (typeof renderPaymentConfigForm === 'function') renderPaymentConfigForm();
+    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+      firebase.database().ref('products').set(products);
+    } else {
+      localStorage.setItem('telegram_shop_products', JSON.stringify(products));
+      populateManualSelect();
+      if (typeof renderPaymentConfigForm === 'function') renderPaymentConfigForm();
+    }
   }
 
   function loadPurchases() {
-    const stored = localStorage.getItem('telegram_shop_purchases');
-    if (stored) {
-      try { purchases = JSON.parse(stored); } catch (e) { purchases = []; }
+    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+      firebase.database().ref('purchases').on('value', (snapshot) => {
+        const data = snapshot.val() || [];
+        purchases = Array.isArray(data) ? data : Object.values(data);
+        renderUsersList();
+        renderUserPurchases();
+      });
+    } else {
+      const stored = localStorage.getItem('telegram_shop_purchases');
+      if (stored) {
+        try { purchases = JSON.parse(stored); } catch (e) { purchases = []; }
+      }
     }
   }
 
   function savePurchases() {
-    localStorage.setItem('telegram_shop_purchases', JSON.stringify(purchases));
+    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+      firebase.database().ref('purchases').set(purchases);
+    } else {
+      localStorage.setItem('telegram_shop_purchases', JSON.stringify(purchases));
+    }
   }
 
   function loadPaymentConfigs() {
-    const stored = localStorage.getItem('payment_configs');
-    if (stored) {
-      try { paymentConfigs = JSON.parse(stored); } catch (e) { paymentConfigs = {}; }
+    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+      firebase.database().ref('paymentConfigs').on('value', (snapshot) => {
+        paymentConfigs = snapshot.val() || {};
+        renderPaymentConfigForm();
+      });
+    } else {
+      const stored = localStorage.getItem('payment_configs');
+      if (stored) {
+        try { paymentConfigs = JSON.parse(stored); } catch (e) { paymentConfigs = {}; }
+      }
     }
   }
 
   function savePaymentConfigs() {
-    localStorage.setItem('payment_configs', JSON.stringify(paymentConfigs));
+    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+      firebase.database().ref('paymentConfigs').set(paymentConfigs);
+    } else {
+      localStorage.setItem('payment_configs', JSON.stringify(paymentConfigs));
+    }
   }
 
   function getPaymentConfigForProduct(productId) {
