@@ -8,7 +8,7 @@
   // ---------- FIREBASE CONFIGURACIÓN ----------
   const firebaseConfig = {
     apiKey: "AIzaSyCC6I-aFKI60OTH5fjkYF_8aa2rmWyvJj8",
-    authDomain: "https://wireguardshop-default-rtdb.firebaseio.com/",
+    authDomain: "https://wireguardshop-default-rtdb.firebaseio.com",
     databaseURL: "https://wireguardshop-default-rtdb.firebaseio.com",
     projectId: "wireguardshop",
     storageBucket: "wireguardshop.firebasestorage.app",
