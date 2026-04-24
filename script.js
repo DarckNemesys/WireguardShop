@@ -3,6 +3,7 @@
 
   // ---------- CONFIGURACIÓN ----------
   const ADMIN_IDS = [7401051294]; // ← TU ID REAL
+  const BOT_TOKEN = '8188077724:AAFFFbtDzHAE-Tn9SwRhQuvA7sfzFijz0VE'; // Token del bot (solo para subir fotos)
 
   // ---------- VARIABLES GLOBALES ----------
   let tg = null;
@@ -87,7 +88,7 @@
   const darkModeIcon = document.getElementById('darkModeIcon');
   let manualFileBase64 = null;
   let currentProductForPurchase = null;
-  let selectedImageBase64 = null;
+  let selectedProofFileId = null; // Cambiado de Base64 a file_id
 
   // ---------- MODO OSCURO ----------
   function applyDarkMode(enabled) {
@@ -162,7 +163,7 @@
       console.log('💻 Ejecutando fuera de Telegram (modo desarrollo).');
       isTelegram = false;
       currentUser = { id: 123456, first_name: 'Demo', username: 'demo' };
-      isAdmin = false; // Cambiar a true para probar localmente como admin
+      isAdmin = false;
     }
 
     loadProducts();
@@ -190,7 +191,6 @@
       saveProducts();
     }
     products = products.map(p => ({ ...p, inStock: p.inStock !== undefined ? p.inStock : true }));
-    saveProducts();
     populateManualSelect();
     renderStore();
     renderAdminList();
@@ -200,7 +200,7 @@
   function saveProducts() {
     localStorage.setItem('telegram_shop_products', JSON.stringify(products));
     populateManualSelect();
-    renderPaymentConfigForm();
+    if (typeof renderPaymentConfigForm === 'function') renderPaymentConfigForm();
   }
 
   function loadPurchases() {
@@ -543,10 +543,31 @@
     });
   }
 
+  // ---------- SUBIR COMPROBANTE A TELEGRAM ----------
+  async function uploadProofToTelegram(file) {
+    const adminId = ADMIN_IDS[0];
+    const clientName = currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : '');
+    const productName = currentProductForPurchase ? currentProductForPurchase.name : 'Producto';
+    
+    const formData = new FormData();
+    formData.append('chat_id', adminId);
+    formData.append('photo', file);
+    formData.append('caption', `🧾 Comprobante de ${clientName} (ID: ${currentUser.id})\nProducto: ${productName}`);
+
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+      method: 'POST',
+      body: formData
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.description || 'Error al subir foto');
+    const photos = json.result.photo;
+    return photos[photos.length - 1].file_id;
+  }
+
   // ---------- MODAL DE PAGO ----------
   function openPaymentModal(product) {
     currentProductForPurchase = product;
-    selectedImageBase64 = null;
+    selectedProofFileId = null;
     acceptTerms.checked = false;
     couponCode.value = '';
     couponMessage.textContent = '';
@@ -573,15 +594,15 @@
       const file = e.target.files[0];
       if (!file) {
         fileName.textContent = 'Ningún archivo seleccionado';
-        selectedImageBase64 = null;
+        selectedProofFileId = null;
         return;
       }
       fileName.textContent = file.name;
-      showToast('⏳ Preparando imagen...', 2000);
-      
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        selectedImageBase64 = ev.target.result;
+      showToast('⏳ Subiendo comprobante...', 2000);
+      try {
+        selectedProofFileId = await uploadProofToTelegram(file);
+        showToast('✅ Comprobante enviado al administrador', 1500);
+        
         const wrapper = document.querySelector('.file-input-wrapper');
         let preview = wrapper.querySelector('.image-preview');
         if (!preview) {
@@ -589,10 +610,12 @@
           preview.className = 'image-preview';
           wrapper.appendChild(preview);
         }
-        preview.src = selectedImageBase64;
-        showToast('✅ Imagen lista', 1000);
-      };
-      reader.readAsDataURL(file);
+        preview.src = URL.createObjectURL(file);
+      } catch(err) {
+        console.error('Error al subir comprobante:', err);
+        showToast('❌ Error: ' + err.message, 2500);
+        selectedProofFileId = null;
+      }
     });
   }
 
@@ -620,7 +643,7 @@
         method: selectedMethod,
         contractType: contractType.value,
         coupon: couponCode.value || null,
-        proofFileId: selectedImageBase64 || null
+        proofFileId: selectedProofFileId || null
       },
       timestamp: new Date().toISOString()
     };
