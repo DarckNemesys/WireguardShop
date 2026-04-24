@@ -8,7 +8,7 @@
   // ---------- FIREBASE CONFIGURACIÓN ----------
   const firebaseConfig = {
     apiKey: "AIzaSyCC6I-aFKI60OTH5fjkYF_8aa2rmWyvJj8",
-    authDomain: "wireguardshop.firebaseapp.com",
+    authDomain: "https://wireguardshop-default-rtdb.firebaseio.com/",
     databaseURL: "https://wireguardshop-default-rtdb.firebaseio.com",
     projectId: "wireguardshop",
     storageBucket: "wireguardshop.firebasestorage.app",
@@ -161,7 +161,7 @@
       tg.ready();
       tg.expand();
       const initData = tg.initDataUnsafe || {};
-      
+
       // Intentar obtener usuario de Telegram o de la URL (fallback para KeyboardButton)
       const urlParams = new URLSearchParams(window.location.search);
       const urlUid = urlParams.get('uid');
@@ -208,14 +208,29 @@
     populateManualSelect();
     renderPaymentConfigForm();
     setupEventListeners();
+
+    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+      console.log("✅ Firebase inicializado correctamente.");
+      firebase.database().ref('.info/connected').on('value', (snap) => {
+        if (snap.val() === true) {
+          console.log("📡 Conectado a Realtime Database.");
+        } else {
+          console.warn("🚫 Desconectado de Realtime Database. Revisa tus reglas de seguridad o URL.");
+        }
+      });
+    } else {
+      console.error("❌ Firebase NO inicializado. Revisa tus credenciales en script.js.");
+    }
   }
 
   // ---------- GESTIÓN DE DATOS ----------
   function loadProducts() {
     if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+      console.log("🔥 Cargando productos desde Firebase...");
       firebase.database().ref('products').on('value', (snapshot) => {
         const data = snapshot.val() || [];
         products = Array.isArray(data) ? data : Object.values(data);
+        console.log("📦 Productos sincronizados:", products.length);
         products = products.map(p => ({ ...p, inStock: p.inStock !== undefined ? p.inStock : true }));
         populateManualSelect();
         renderStore();
@@ -233,12 +248,19 @@
         saveProducts();
       }
       products = products.map(p => ({ ...p, inStock: p.inStock !== undefined ? p.inStock : true }));
+      renderStore();
+      renderAdminList();
     }
   }
 
   function saveProducts() {
     if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-      firebase.database().ref('products').set(products);
+      firebase.database().ref('products').set(products).then(() => {
+        console.log("✅ Productos guardados en Firebase");
+      }).catch(err => {
+        console.error("❌ Error al guardar productos:", err);
+        showToast("❌ Error de sincronización", 2000);
+      });
     } else {
       localStorage.setItem('telegram_shop_products', JSON.stringify(products));
       populateManualSelect();
@@ -248,9 +270,11 @@
 
   function loadPurchases() {
     if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+      console.log("🔥 Cargando compras desde Firebase...");
       firebase.database().ref('purchases').on('value', (snapshot) => {
         const data = snapshot.val() || [];
         purchases = Array.isArray(data) ? data : Object.values(data);
+        console.log("🛍️ Compras sincronizadas:", purchases.length);
         renderUsersList();
         renderUserPurchases();
       });
@@ -264,7 +288,11 @@
 
   function savePurchases() {
     if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-      firebase.database().ref('purchases').set(purchases);
+      firebase.database().ref('purchases').set(purchases).then(() => {
+        console.log("✅ Compras guardadas en Firebase");
+      }).catch(err => {
+        console.error("❌ Error al guardar compras:", err);
+      });
     } else {
       localStorage.setItem('telegram_shop_purchases', JSON.stringify(purchases));
     }
