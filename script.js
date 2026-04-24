@@ -8,7 +8,7 @@
   // ---------- FIREBASE CONFIGURACIÓN ----------
   const firebaseConfig = {
     apiKey: "AIzaSyCC6I-aFKI60OTH5fjkYF_8aa2rmWyvJj8",
-    authDomain: "https://wireguardshop-default-rtdb.firebaseio.com",
+    authDomain: "wireguardshop.firebaseapp.com",
     databaseURL: "https://wireguardshop-default-rtdb.firebaseio.com",
     projectId: "wireguardshop",
     storageBucket: "wireguardshop.firebasestorage.app",
@@ -17,8 +17,13 @@
     measurementId: "G-BMGVHJ78FS"
   };
 
-  if (firebaseConfig.apiKey !== "PEGAR_AQUI_API_KEY") {
-    firebase.initializeApp(firebaseConfig);
+  if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "PEGAR_AQUI_API_KEY") {
+    try {
+      firebase.initializeApp(firebaseConfig);
+      console.log("🚀 Firebase inicializado correctamente.");
+    } catch (e) {
+      console.error("❌ Error al inicializar Firebase:", e);
+    }
   } else {
     console.warn("⚠️ Firebase no está configurado. Por favor añade tus credenciales.");
   }
