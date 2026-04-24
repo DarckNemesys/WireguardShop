@@ -151,8 +151,6 @@
   }
 
   // ---------- SINCRONIZACIÓN ENTRE PESTAÑAS ----------
-  // Eliminado porque Firebase sincroniza automáticamente todos los clientes.
-
   // ---------- INICIALIZACIÓN ----------
   async function init() {
     initDarkMode();
@@ -163,6 +161,12 @@
       tg.ready();
       tg.expand();
       const initData = tg.initDataUnsafe || {};
+      
+      // Intentar obtener usuario de Telegram o de la URL (fallback para KeyboardButton)
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlUid = urlParams.get('uid');
+      const urlName = urlParams.get('name');
+
       if (initData.user && initData.user.id) {
         currentUser = {
           id: initData.user.id,
@@ -170,17 +174,26 @@
           last_name: initData.user.last_name,
           username: initData.user.username
         };
+      } else if (urlUid) {
+        currentUser = {
+          id: parseInt(urlUid),
+          first_name: decodeURIComponent(urlName || 'Usuario'),
+          last_name: '',
+          username: ''
+        };
+      }
+
+      if (currentUser) {
         isAdmin = ADMIN_IDS.includes(currentUser.id);
-        console.log('👤 Usuario:', currentUser);
-        console.log('👑 ¿Admin?:', isAdmin);
+        console.log('👤 Usuario detectado:', currentUser);
       } else {
-        console.error('❌ No se recibió información del usuario.');
+        console.error('❌ No se pudo identificar al usuario.');
         currentUser = { id: 0, first_name: 'Invitado', username: null };
         isAdmin = false;
       }
     } else {
-      isTelegram = false;
-      currentUser = { id: 0, first_name: 'Demo', username: 'demo' };
+      // Modo web fuera de Telegram
+      currentUser = { id: 12345, first_name: 'Usuario Web', username: 'webuser' };
       isAdmin = false;
     }
 
@@ -936,16 +949,17 @@
     const clearPurchasesBtn = document.getElementById('clearPurchasesBtn');
     if (clearPurchasesBtn) {
       clearPurchasesBtn.onclick = () => {
-        modalTitle.textContent = 'Limpiar historial de compras';
-        modalMessage.textContent = '¿Eliminar todos los registros de compras? Los productos no se verán afectados.';
+        modalTitle.textContent = 'Limpiar historial';
+        modalMessage.textContent = '¿Seguro que deseas borrar tu historial de compras personal?';
         modalOverlay.style.display = 'flex';
         modalConfirm.onclick = () => {
-          purchases = [];
+          // Filtrar solo las compras que NO pertenecen al usuario actual
+          purchases = purchases.filter(p => p.userId !== currentUser.id);
           savePurchases();
-          renderUsersList();
           renderUserPurchases();
+          if (isAdmin) renderUsersList();
           modalOverlay.style.display = 'none';
-          showToast('🧹 Historial de compras eliminado', 1500);
+          showToast('🧹 Historial limpio', 1500);
         };
         modalCancel.onclick = () => modalOverlay.style.display = 'none';
       };
