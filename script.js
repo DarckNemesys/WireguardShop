@@ -1,4 +1,4 @@
-(function() {
+(function () {
   'use strict';
 
   // ---------- CONFIGURACIÓN ----------
@@ -84,13 +84,36 @@
   const cancelEditBtn = document.getElementById('cancelEditBtn');
   const manualAttachment = document.getElementById('manualAttachment');
   const attachmentFileName = document.getElementById('attachmentFileName');
+  const darkModeBtn = document.getElementById('darkModeBtn');
+  const darkModeIcon = document.getElementById('darkModeIcon');
   let manualFileBase64 = null;
   let currentProductForPurchase = null;
   let selectedImageBase64 = null;
 
-  // ---------- ESPERAR A QUE TELEGRAM ESTÉ LISTO ----------
+  // ---------- MODO OSCURO ----------
+  function applyDarkMode(enabled) {
+    if (enabled) {
+      document.body.classList.add('dark');
+      darkModeIcon.textContent = '☀️';
+    } else {
+      document.body.classList.remove('dark');
+      darkModeIcon.textContent = '🌙';
+    }
+    localStorage.setItem('darkMode', enabled);
+  }
+
+  function initDarkMode() {
+    const saved = localStorage.getItem('darkMode');
+    applyDarkMode(saved === 'true');
+    darkModeBtn.addEventListener('click', () => {
+      const isDark = document.body.classList.contains('dark');
+      applyDarkMode(!isDark);
+    });
+  }
+
+  // ---------- DETECCIÓN DE TELEGRAM ----------
   function waitForTelegram(timeout = 3000) {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       if (window.Telegram && window.Telegram.WebApp) {
         resolve(window.Telegram.WebApp);
         return;
@@ -102,26 +125,38 @@
           resolve(window.Telegram.WebApp);
         } else if (elapsed >= timeout) {
           clearInterval(interval);
-          reject(new Error('Telegram WebApp no disponible'));
+          resolve(null);
         }
         elapsed += 100;
       }, 100);
     });
   }
 
-  // ---------- INICIALIZACIÓN ASÍNCRONA ----------
-  async function init() {
-    console.log('🚀 Iniciando Wireguard Shop...');
-    try {
-      tg = await waitForTelegram(3000);
-      isTelegram = true;
-      console.log('✅ Telegram WebApp detectado');
-    } catch (e) {
-      console.warn('💻 No se detectó Telegram. Modo demostración.');
-      isTelegram = false;
+  // ---------- SINCRONIZACIÓN ENTRE PESTAÑAS ----------
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'telegram_shop_products') {
+      loadProducts();
+      renderStore();
+      renderAdminList();
+      populateManualSelect();
+      renderPaymentConfigForm();
+    } else if (e.key === 'telegram_shop_purchases') {
+      loadPurchases();
+      renderUsersList();
+      renderUserPurchases();
+    } else if (e.key === 'payment_configs') {
+      loadPaymentConfigs();
+      renderPaymentConfigForm();
     }
+  });
 
-    if (isTelegram) {
+  // ---------- INICIALIZACIÓN ----------
+  async function init() {
+    initDarkMode();
+    console.log('🚀 Iniciando Wireguard Shop...');
+    tg = await waitForTelegram(3000);
+    if (tg) {
+      isTelegram = true;
       tg.ready();
       tg.expand();
       const initData = tg.initDataUnsafe || {};
@@ -141,6 +176,7 @@
         isAdmin = false;
       }
     } else {
+      isTelegram = false;
       currentUser = { id: 0, first_name: 'Demo', username: 'demo' };
       isAdmin = false;
     }
@@ -158,11 +194,11 @@
     setupEventListeners();
   }
 
-  // ---------- GESTIÓN DE DATOS (load/save) ----------
+  // ---------- GESTIÓN DE DATOS ----------
   function loadProducts() {
     const stored = localStorage.getItem('telegram_shop_products');
     if (stored) {
-      try { products = JSON.parse(stored); } catch(e) { products = []; }
+      try { products = JSON.parse(stored); } catch (e) { products = []; }
     } else {
       products = [
         { id: '1', name: 'Wireguard VPN 30 días', description: 'Navegación nacional con Nauta/WiFi ETECSA', price: 342, image: '🔒', inStock: true }
@@ -182,7 +218,7 @@
   function loadPurchases() {
     const stored = localStorage.getItem('telegram_shop_purchases');
     if (stored) {
-      try { purchases = JSON.parse(stored); } catch(e) { purchases = []; }
+      try { purchases = JSON.parse(stored); } catch (e) { purchases = []; }
     }
   }
 
@@ -193,7 +229,7 @@
   function loadPaymentConfigs() {
     const stored = localStorage.getItem('payment_configs');
     if (stored) {
-      try { paymentConfigs = JSON.parse(stored); } catch(e) { paymentConfigs = {}; }
+      try { paymentConfigs = JSON.parse(stored); } catch (e) { paymentConfigs = {}; }
     }
   }
 
@@ -292,13 +328,13 @@
       editBtn.innerHTML = '✏️';
       editBtn.onclick = (e) => { e.stopPropagation(); openEditModal(product); };
       actionsDiv.appendChild(editBtn);
-      
+
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'admin-delete-btn';
       deleteBtn.innerHTML = '🗑️';
       deleteBtn.onclick = (e) => { e.stopPropagation(); confirmDeleteProduct(product.id); };
       actionsDiv.appendChild(deleteBtn);
-      
+
       const stockInfo = document.createElement('span');
       stockInfo.style.marginLeft = '8px';
       stockInfo.style.fontSize = '12px';
@@ -310,8 +346,8 @@
       buyBtn.className = 'buy-btn';
       buyBtn.textContent = product.inStock ? 'Comprar' : 'Agotado';
       buyBtn.disabled = !product.inStock;
-      buyBtn.onclick = (e) => { 
-        e.stopPropagation(); 
+      buyBtn.onclick = (e) => {
+        e.stopPropagation();
         if (product.inStock) openPaymentModal(product);
       };
       actionsDiv.appendChild(buyBtn);
@@ -386,11 +422,11 @@
     });
   }
 
-  // ---------- CONFIGURACIÓN DE PAGO (renderizado del panel) ----------
+  // ---------- CONFIGURACIÓN DE PAGO ----------
   function renderPaymentConfigForm() {
     const container = document.getElementById('paymentConfigContainer');
     if (!container) return;
-    
+
     let html = `
       <div class="form-group">
         <label>Seleccionar producto a configurar</label>
@@ -401,7 +437,7 @@
       html += `<option value="${p.id}">${escapeHtml(p.name)}</option>`;
     });
     html += `</select></div>`;
-    
+
     html += `
       <div id="configFormFields" style="display: none;">
         <div class="form-group">
@@ -435,10 +471,10 @@
       </div>
     `;
     container.innerHTML = html;
-    
+
     const select = document.getElementById('configProductSelect');
     const fieldsDiv = document.getElementById('configFormFields');
-    
+
     select.addEventListener('change', () => {
       const productId = select.value;
       if (!productId) {
@@ -454,7 +490,7 @@
       document.getElementById('configMethods').value = JSON.stringify(config.paymentMethods, null, 2);
       fieldsDiv.style.display = 'block';
     });
-    
+
     const saveBtn = document.getElementById('savePaymentConfigBtn');
     if (saveBtn) {
       saveBtn.addEventListener('click', () => {
@@ -480,7 +516,7 @@
           if (currentProductForPurchase && currentProductForPurchase.id === productId) {
             renderPaymentModalContent(productId);
           }
-        } catch(e) {
+        } catch (e) {
           showToast('❌ Error en formato JSON', 2000);
         }
       });
@@ -491,13 +527,13 @@
     const config = getPaymentConfigForProduct(productId);
     document.querySelector('.payment-subtitle').textContent = config.subtitle;
     document.querySelector('.plan-badge').textContent = config.planName;
-    
+
     const termsList = document.querySelector('.terms-list');
     termsList.innerHTML = config.terms.map(t => `<li>${t}</li>`).join('');
-    
+
     document.getElementById('cupPrice').textContent = `${config.prices.cup} CUP`;
     document.getElementById('saldoPrice').textContent = `${config.prices.saldo} CUP`;
-    
+
     const methodsContainer = document.querySelector('.payment-methods-section');
     methodsContainer.innerHTML = '<label>Métodos de Pago Disponibles</label>';
     config.paymentMethods.forEach(m => {
@@ -506,7 +542,7 @@
       div.innerHTML = `<span>${escapeHtml(m.name)}</span><span class="payment-number">${escapeHtml(m.number)}</span>`;
       methodsContainer.appendChild(div);
     });
-    
+
     const select = document.getElementById('paymentMethod');
     select.innerHTML = '<option value="">Selecciona el método de pago</option>';
     config.paymentMethods.forEach((m, i) => {
@@ -528,11 +564,11 @@
     paymentProof.value = '';
     fileName.textContent = 'Ningún archivo seleccionado';
     contractType.value = 'nuevo';
-    
+
     const previewContainer = document.querySelector('.file-input-wrapper');
     const existingPreview = previewContainer.querySelector('.image-preview');
     if (existingPreview) existingPreview.remove();
-    
+
     renderPaymentModalContent(product.id);
     paymentModal.style.display = 'flex';
   }
@@ -570,7 +606,7 @@
           wrapper.appendChild(preview);
         }
         preview.src = URL.createObjectURL(file);
-      } catch(err) {
+      } catch (err) {
         console.error(err);
         showToast('❌ Error al subir la imagen', 2500);
         selectedImageBase64 = null;
@@ -582,7 +618,7 @@
     const adminId = ADMIN_IDS[0];
     const clientName = currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : '');
     const productName = currentProductForPurchase ? currentProductForPurchase.name : 'Producto';
-    
+
     const formData = new FormData();
     formData.append('chat_id', adminId);
     formData.append('photo', file);
@@ -609,11 +645,11 @@
     if (!acceptTerms.checked) { showToast('⚠️ Debes aceptar los términos', 2000); return; }
     if (!paymentMethod.value) { showToast('⚠️ Selecciona método de pago', 2000); return; }
     if (!contractType.value) { showToast('⚠️ Selecciona tipo de contrato', 2000); return; }
-    
+
     const methodIndex = parseInt(paymentMethod.value);
     const config = getPaymentConfigForProduct(currentProductForPurchase.id);
     const selectedMethod = config.paymentMethods[methodIndex];
-    
+
     const purchaseData = {
       action: 'purchase_with_details',
       product: currentProductForPurchase,
@@ -626,13 +662,13 @@
       },
       timestamp: new Date().toISOString()
     };
-    
+
     const dataStr = JSON.stringify(purchaseData);
     if (new Blob([dataStr]).size > 4096) {
       showToast('⚠️ Los datos son demasiado grandes', 3000);
       return;
     }
-    
+
     const purchase = {
       userId: currentUser.id,
       userName: currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : ''),
@@ -643,7 +679,7 @@
     };
     purchases.push(purchase);
     savePurchases();
-    
+
     if (isTelegram) {
       tg.HapticFeedback?.notificationOccurred('success');
       tg.sendData(dataStr);
@@ -652,73 +688,47 @@
       console.log('Purchase data:', purchaseData);
       showToast('✅ Compra simulada', 2000);
     }
-    
+
     renderUserPurchases();
     renderUsersList();
     closePaymentModalHandler();
   }
 
-  // ---------- ENVÍO MANUAL (MEJORADO) ----------
+  // ---------- ENVÍO MANUAL ----------
   function openManualSendForUser(userId, userDisplayName) {
     if (!adminView.classList.contains('active')) switchView('admin');
     document.getElementById('targetUserId').value = userId;
     showToast(`📝 Preparando envío para ${userDisplayName || 'usuario ' + userId}`, 2000);
   }
 
-  async function handleManualSend() {
+  function handleManualSend() {
     const targetUserId = document.getElementById('targetUserId').value.trim();
     const productId = manualProductSelect.value;
     const customMessage = document.getElementById('customMessage').value.trim();
-    
+
     if (!targetUserId || !productId) {
       showToast('⚠️ Completa ID y producto', 2000);
       return;
     }
-    
+
     const product = products.find(p => p.id === productId);
-    let attachmentFileId = null;
-
-    if (isTelegram && manualAttachment && manualAttachment.files && manualAttachment.files.length > 0) {
-      const file = manualAttachment.files[0];
-      showToast('⏳ Subiendo archivo a Telegram...', 2000);
-      try {
-        const formData = new FormData();
-        formData.append('chat_id', ADMIN_IDS[0]); // Subimos temporalmente al admin para obtener el file_id
-        formData.append('document', file);
-        
-        const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, {
-          method: 'POST',
-          body: formData
-        });
-        const json = await res.json();
-        if (!json.ok) throw new Error(json.description || 'Error en subida');
-        attachmentFileId = json.result.document.file_id;
-        showToast('✅ Archivo listo para envío', 1500);
-      } catch (err) {
-        console.error('Error al subir archivo:', err);
-        showToast('❌ Error al subir el archivo adjunto', 3000);
-        return;
-      }
-    }
-
     const sendData = {
       action: 'manual_send',
       target_user_id: targetUserId,
       product: product,
       custom_message: customMessage || `Aquí está tu producto: ${product.name}`,
-      attachment: attachmentFileId ? null : (manualFileBase64 || null),
-      attachment_file_id: attachmentFileId
+      attachment: manualFileBase64 || null
     };
-    
+
     const dataStr = JSON.stringify(sendData);
     const sizeInBytes = new Blob([dataStr]).size;
     console.log(`Tamaño del JSON a enviar: ${sizeInBytes} bytes (límite 4096)`);
-    
+
     if (sizeInBytes > 4096) {
-      showToast(`⚠️ El archivo es demasiado grande (${Math.round(sizeInBytes/1024)} KB). Máximo 4 KB.`, 4000);
+      showToast(`⚠️ El archivo es demasiado grande (${Math.round(sizeInBytes / 1024)} KB). Máximo 4 KB.`, 4000);
       return;
     }
-    
+
     if (isTelegram) {
       tg.sendData(dataStr);
       tg.showPopup({ title: '📨 Envío solicitado', message: 'El bot procesará el envío.' });
@@ -726,8 +736,7 @@
       console.log('Datos enviados:', sendData);
       showToast(`📨 Enviado a ${targetUserId} (demo)`, 2000);
     }
-    
-    // Limpiar campos
+
     document.getElementById('targetUserId').value = '';
     manualProductSelect.value = '';
     document.getElementById('customMessage').value = '';
@@ -756,7 +765,7 @@
     const id = editProductId.value;
     const productIndex = products.findIndex(p => p.id === id);
     if (productIndex === -1) return;
-    
+
     const updatedProduct = {
       ...products[productIndex],
       name: editProductName.value.trim(),
@@ -765,7 +774,7 @@
       image: editProductImage.value.trim() || '📦',
       inStock: editProductStock.value === 'true'
     };
-    
+
     products[productIndex] = updatedProduct;
     saveProducts();
     renderStore();
@@ -856,7 +865,7 @@
     if (addProductForm) addProductForm.onsubmit = handleAddProduct;
     const sendManualBtn = document.getElementById('sendManualProductBtn');
     if (sendManualBtn) sendManualBtn.onclick = handleManualSend;
-    
+
     if (manualAttachment) {
       manualAttachment.addEventListener('change', (e) => {
         const file = e.target.files[0];
@@ -871,7 +880,7 @@
         }
       });
     }
-    
+
     const exportBtn = document.getElementById('exportDataBtn');
     if (exportBtn) exportBtn.onclick = () => {
       const exportPayload = JSON.stringify({ action: 'export_data', data: { products, purchases, paymentConfigs } });
@@ -882,10 +891,27 @@
         showToast('📤 Datos en consola (modo demo)', 1500);
       }
     };
-    const clearBtn = document.getElementById('clearAllBtn');
-    if (clearBtn) clearBtn.onclick = () => {
+    const clearPurchasesBtn = document.getElementById('clearPurchasesBtn');
+    if (clearPurchasesBtn) {
+      clearPurchasesBtn.onclick = () => {
+        modalTitle.textContent = 'Limpiar historial de compras';
+        modalMessage.textContent = '¿Eliminar todos los registros de compras? Los productos no se verán afectados.';
+        modalOverlay.style.display = 'flex';
+        modalConfirm.onclick = () => {
+          purchases = [];
+          savePurchases();
+          renderUsersList();
+          renderUserPurchases();
+          modalOverlay.style.display = 'none';
+          showToast('🧹 Historial de compras eliminado', 1500);
+        };
+        modalCancel.onclick = () => modalOverlay.style.display = 'none';
+      };
+    }
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    if (clearAllBtn) clearAllBtn.onclick = () => {
       modalTitle.textContent = 'Limpiar tienda';
-      modalMessage.textContent = '¿Eliminar todo?';
+      modalMessage.textContent = '¿Eliminar TODO (productos, compras, configuraciones)?';
       modalOverlay.style.display = 'flex';
       modalConfirm.onclick = () => {
         products = []; purchases = []; paymentConfigs = {};
