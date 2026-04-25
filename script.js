@@ -1,9 +1,8 @@
-(function () {
+(function() {
   'use strict';
 
   // ---------- CONFIGURACIÓN ----------
   const ADMIN_IDS = [7401051294]; // ← TU ID REAL
-  const BOT_TOKEN = '8188077724:AAFFFbtDzHAE-Tn9SwRhQuvA7sfzFijz0VE'; // Token del bot
 
   // ---------- VARIABLES GLOBALES ----------
   let tg = null;
@@ -13,7 +12,6 @@
   let products = [];
   let purchases = [];
   let paymentConfigs = {};
-  let cloudStorage = null;
 
   const defaultPaymentConfig = {
     subtitle: 'Wireguard para navegar por la nacional (con Nauta hogar o WiFi ETECSA)',
@@ -43,8 +41,8 @@
   const menuBtn = document.getElementById('menuBtn');
   const logoutBtn = document.getElementById('logoutBtn');
   const userAvatar = document.getElementById('userAvatar');
-  const userNameEl = document.getElementById('userName');
-  const userUsernameEl = document.getElementById('userUsername');
+  const userName = document.getElementById('userName');
+  const userUsername = document.getElementById('userUsername');
   const productsContainer = document.getElementById('productsContainer');
   const adminProductsList = document.getElementById('adminProductsList');
   const productCount = document.getElementById('productCount');
@@ -87,9 +85,9 @@
   const attachmentFileName = document.getElementById('attachmentFileName');
   const darkModeBtn = document.getElementById('darkModeBtn');
   const darkModeIcon = document.getElementById('darkModeIcon');
-  let manualFileFileId = null;
+  let manualFileBase64 = null;
   let currentProductForPurchase = null;
-  let selectedProofFileId = null;
+  let selectedImageBase64 = null;
 
   // ---------- MODO OSCURO ----------
   function applyDarkMode(enabled) {
@@ -133,29 +131,6 @@
     });
   }
 
-  // ---------- ALMACENAMIENTO SINCRONIZADO ----------
-  async function storageGet(key) {
-    if (cloudStorage) {
-      try {
-        const val = await cloudStorage.getItem(key);
-        if (val) return JSON.parse(val);
-      } catch (e) { /* ignorar */ }
-    }
-    const local = localStorage.getItem(key);
-    if (local) {
-      try { return JSON.parse(local); } catch { return local; }
-    }
-    return null;
-  }
-
-  async function storageSet(key, value) {
-    const str = JSON.stringify(value);
-    localStorage.setItem(key, str);
-    if (cloudStorage) {
-      try { await cloudStorage.setItem(key, str); } catch (e) { /* ignorar */ }
-    }
-  }
-
   // ---------- INICIALIZACIÓN ----------
   async function init() {
     initDarkMode();
@@ -166,7 +141,6 @@
       isTelegram = true;
       tg.ready();
       tg.expand();
-      cloudStorage = tg.CloudStorage;
 
       const userData = tg.initDataUnsafe?.user;
       if (userData && userData.id) {
@@ -177,24 +151,23 @@
           username: userData.username
         };
         isAdmin = ADMIN_IDS.includes(currentUser.id);
-        console.log('👤 Usuario detectado:', currentUser);
-        console.log('👑 ¿Admin?:', isAdmin);
+        console.log('👤 Usuario Telegram:', currentUser);
+        console.log('👑 ¿Es admin?:', isAdmin);
       } else {
-        console.warn('⚠️ No se recibió usuario de Telegram.');
+        console.warn('⚠️ No se pudieron obtener datos del usuario de Telegram.');
         currentUser = { id: 0, first_name: 'Invitado', username: null };
         isAdmin = false;
       }
     } else {
-      console.log('💻 Modo navegador (demo).');
+      console.log('💻 Ejecutando fuera de Telegram (modo desarrollo).');
       isTelegram = false;
       currentUser = { id: 123456, first_name: 'Demo', username: 'demo' };
-      isAdmin = false;
+      isAdmin = false; // Cambiar a true para probar localmente como admin
     }
 
-    await loadProducts();
-    await loadPurchases();
-    await loadPaymentConfigs();
-
+    loadProducts();
+    loadPurchases();
+    loadPaymentConfigs();
     updateUIForRole();
     renderStore();
     renderAdminList();
@@ -203,77 +176,66 @@
     populateManualSelect();
     renderPaymentConfigForm();
     setupEventListeners();
-
-    // Sincronización periódica (por si otro dispositivo cambia datos)
-    if (cloudStorage) {
-      setInterval(async () => {
-        const remoteProducts = await storageGet('products');
-        if (remoteProducts && JSON.stringify(remoteProducts) !== JSON.stringify(products)) {
-          products = remoteProducts;
-          renderStore();
-          renderAdminList();
-          populateManualSelect();
-          renderPaymentConfigForm();
-        }
-        const remotePurchases = await storageGet('purchases');
-        if (remotePurchases && JSON.stringify(remotePurchases) !== JSON.stringify(purchases)) {
-          purchases = remotePurchases;
-          renderUsersList();
-          renderUserPurchases();
-        }
-      }, 3000);
-    }
   }
 
-  // ---------- CARGA DE DATOS ----------
-  async function loadProducts() {
-    const stored = await storageGet('products');
-    if (stored && Array.isArray(stored)) {
-      products = stored;
+  // ---------- GESTIÓN DE DATOS ----------
+  function loadProducts() {
+    const stored = localStorage.getItem('telegram_shop_products');
+    if (stored) {
+      try { products = JSON.parse(stored); } catch(e) { products = []; }
     } else {
       products = [
         { id: '1', name: 'Wireguard VPN 30 días', description: 'Navegación nacional con Nauta/WiFi ETECSA', price: 342, image: '🔒', inStock: true }
       ];
-      await saveProducts();
+      saveProducts();
     }
     products = products.map(p => ({ ...p, inStock: p.inStock !== undefined ? p.inStock : true }));
+    saveProducts();
+    populateManualSelect();
+    renderStore();
+    renderAdminList();
+    renderPaymentConfigForm();
   }
 
-  async function saveProducts() {
-    await storageSet('products', products);
+  function saveProducts() {
+    localStorage.setItem('telegram_shop_products', JSON.stringify(products));
     populateManualSelect();
     renderPaymentConfigForm();
   }
 
-  async function loadPurchases() {
-    const stored = await storageGet('purchases');
-    purchases = Array.isArray(stored) ? stored : [];
+  function loadPurchases() {
+    const stored = localStorage.getItem('telegram_shop_purchases');
+    if (stored) {
+      try { purchases = JSON.parse(stored); } catch(e) { purchases = []; }
+    }
     renderUsersList();
     renderUserPurchases();
   }
 
-  async function savePurchases() {
-    await storageSet('purchases', purchases);
+  function savePurchases() {
+    localStorage.setItem('telegram_shop_purchases', JSON.stringify(purchases));
   }
 
-  async function loadPaymentConfigs() {
-    const stored = await storageGet('paymentConfigs');
-    paymentConfigs = stored || {};
+  function loadPaymentConfigs() {
+    const stored = localStorage.getItem('payment_configs');
+    if (stored) {
+      try { paymentConfigs = JSON.parse(stored); } catch(e) { paymentConfigs = {}; }
+    }
   }
 
-  async function savePaymentConfigs() {
-    await storageSet('paymentConfigs', paymentConfigs);
+  function savePaymentConfigs() {
+    localStorage.setItem('payment_configs', JSON.stringify(paymentConfigs));
   }
 
   function getPaymentConfigForProduct(productId) {
     return paymentConfigs[productId] || JSON.parse(JSON.stringify(defaultPaymentConfig));
   }
 
-  // ---------- ACTUALIZAR INTERFAZ ----------
+  // ---------- ACTUALIZACIÓN DE UI ----------
   function updateUIForRole() {
     const displayName = currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : '');
-    userNameEl.textContent = displayName || 'Usuario';
-    userUsernameEl.textContent = currentUser.username ? '@' + currentUser.username : '@usuario';
+    userName.textContent = displayName || 'Usuario';
+    userUsername.textContent = currentUser.username ? '@' + currentUser.username : '@usuario';
     userAvatar.textContent = (currentUser.first_name?.charAt(0) || 'U').toUpperCase();
 
     if (isAdmin) {
@@ -288,7 +250,7 @@
     headerTitle.textContent = 'Wireguard Shop';
   }
 
-  // ---------- RENDERIZADO ----------
+  // ---------- RENDERIZADO DE PRODUCTOS ----------
   function populateManualSelect() {
     if (!manualProductSelect) return;
     manualProductSelect.innerHTML = '<option value="">Selecciona un producto...</option>';
@@ -389,6 +351,7 @@
     return div.innerHTML;
   }
 
+  // ---------- RENDERIZADO DE USUARIOS Y COMPRAS ----------
   function renderUsersList() {
     if (!usersListContainer) return;
     usersListContainer.innerHTML = '';
@@ -520,7 +483,7 @@
     
     const saveBtn = document.getElementById('savePaymentConfigBtn');
     if (saveBtn) {
-      saveBtn.addEventListener('click', async () => {
+      saveBtn.addEventListener('click', () => {
         const productId = select.value;
         if (!productId) {
           showToast('⚠️ Selecciona un producto', 2000);
@@ -538,7 +501,7 @@
             paymentMethods: JSON.parse(document.getElementById('configMethods').value)
           };
           paymentConfigs[productId] = newConfig;
-          await savePaymentConfigs();
+          savePaymentConfigs();
           showToast('✅ Configuración guardada', 1500);
           if (currentProductForPurchase && currentProductForPurchase.id === productId) {
             renderPaymentModalContent(productId);
@@ -552,10 +515,15 @@
 
   function renderPaymentModalContent(productId) {
     const config = getPaymentConfigForProduct(productId);
-    document.querySelector('.payment-subtitle').textContent = config.subtitle;
-    document.querySelector('.plan-badge').textContent = config.planName;
-    
+    const subtitleEl = document.querySelector('.payment-subtitle');
+    const planBadgeEl = document.querySelector('.plan-badge');
     const termsList = document.querySelector('.terms-list');
+    
+    if (!subtitleEl || !planBadgeEl || !termsList) return;
+    
+    subtitleEl.textContent = config.subtitle;
+    planBadgeEl.textContent = config.planName;
+    
     termsList.innerHTML = config.terms.map(t => `<li>${t}</li>`).join('');
     
     document.getElementById('cupPrice').textContent = `${config.prices.cup} CUP`;
@@ -580,44 +548,10 @@
     });
   }
 
-  // ---------- SUBIR ARCHIVOS ----------
-  async function uploadProofToTelegram(file) {
-    const adminId = ADMIN_IDS[0];
-    const clientName = currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : '');
-    const productName = currentProductForPurchase ? currentProductForPurchase.name : 'Producto';
-
-    const formData = new FormData();
-    formData.append('chat_id', adminId);
-    formData.append('photo', file);
-    formData.append('caption', `🧾 Comprobante de ${clientName} (ID: ${currentUser.id})\nProducto: ${productName}`);
-
-    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-      method: 'POST',
-      body: formData
-    });
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.description || 'Error al subir foto');
-    const photos = json.result.photo;
-    return photos[photos.length - 1].file_id;
-  }
-
-  async function uploadAttachmentToTelegram(file) {
-    const formData = new FormData();
-    formData.append('chat_id', ADMIN_IDS[0]);
-    formData.append('document', file);
-    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, {
-      method: 'POST',
-      body: formData
-    });
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.description || 'Error al subir archivo');
-    return json.result.document.file_id;
-  }
-
   // ---------- MODAL DE PAGO ----------
   function openPaymentModal(product) {
     currentProductForPurchase = product;
-    selectedProofFileId = null;
+    selectedImageBase64 = null;
     acceptTerms.checked = false;
     couponCode.value = '';
     couponMessage.textContent = '';
@@ -644,15 +578,15 @@
       const file = e.target.files[0];
       if (!file) {
         fileName.textContent = 'Ningún archivo seleccionado';
-        selectedProofFileId = null;
+        selectedImageBase64 = null;
         return;
       }
       fileName.textContent = file.name;
-      showToast('⏳ Subiendo comprobante...', 2000);
-      try {
-        selectedProofFileId = await uploadProofToTelegram(file);
-        showToast('✅ Comprobante enviado al administrador', 1500);
-        
+      showToast('⏳ Preparando imagen...', 2000);
+      
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        selectedImageBase64 = ev.target.result;
         const wrapper = document.querySelector('.file-input-wrapper');
         let preview = wrapper.querySelector('.image-preview');
         if (!preview) {
@@ -660,12 +594,10 @@
           preview.className = 'image-preview';
           wrapper.appendChild(preview);
         }
-        preview.src = URL.createObjectURL(file);
-      } catch(err) {
-        console.error('Error al subir comprobante:', err);
-        showToast('❌ Error: ' + err.message, 2500);
-        selectedProofFileId = null;
-      }
+        preview.src = selectedImageBase64;
+        showToast('✅ Imagen lista', 1000);
+      };
+      reader.readAsDataURL(file);
     });
   }
 
@@ -676,7 +608,7 @@
     });
   }
 
-  async function handlePaymentSubmit() {
+  function handlePaymentSubmit() {
     if (!acceptTerms.checked) { showToast('⚠️ Debes aceptar los términos', 2000); return; }
     if (!paymentMethod.value) { showToast('⚠️ Selecciona método de pago', 2000); return; }
     if (!contractType.value) { showToast('⚠️ Selecciona tipo de contrato', 2000); return; }
@@ -688,18 +620,18 @@
     const purchaseData = {
       action: 'purchase_with_details',
       product: currentProductForPurchase,
-      user: { id: currentUser.id, name: userNameEl.textContent, username: currentUser.username },
+      user: { id: currentUser.id, name: userName.textContent, username: currentUser.username },
       payment: {
         method: selectedMethod,
         contractType: contractType.value,
         coupon: couponCode.value || null,
-        proofFileId: selectedProofFileId || null
+        proofFileId: selectedImageBase64 || null
       },
       timestamp: new Date().toISOString()
     };
     
     const dataStr = JSON.stringify(purchaseData);
-    if (new Blob([dataStr]).size > 4096) {
+    if (dataStr.length > 4096) {
       showToast('⚠️ Los datos son demasiado grandes', 3000);
       return;
     }
@@ -713,7 +645,7 @@
       paymentDetails: purchaseData.payment
     };
     purchases.push(purchase);
-    await savePurchases();
+    savePurchases();
     
     if (isTelegram) {
       tg.HapticFeedback?.notificationOccurred('success');
@@ -731,54 +663,39 @@
 
   // ---------- ENVÍO MANUAL ----------
   function openManualSendForUser(userId, userDisplayName) {
-    if (!adminView.classList.contains('active')) switchView('admin');
-    document.getElementById('targetUserId').value = userId;
+    if (adminView && !adminView.classList.contains('active')) switchView('admin');
+    const targetInput = document.getElementById('targetUserId');
+    if (targetInput) targetInput.value = userId;
     showToast(`📝 Preparando envío para ${userDisplayName || 'usuario ' + userId}`, 2000);
   }
 
-  async function handleManualSend() {
+  function handleManualSend() {
     const targetUserId = document.getElementById('targetUserId').value.trim();
     const productId = manualProductSelect.value;
     const customMessage = document.getElementById('customMessage').value.trim();
-
+    
     if (!targetUserId || !productId) {
       showToast('⚠️ Completa ID y producto', 2000);
       return;
     }
-
+    
     const product = products.find(p => p.id === productId);
-    if (!product) {
-      showToast('❌ Producto no encontrado', 2000);
-      return;
-    }
-
-    let attachmentFileId = manualFileFileId;
-    const fileInput = document.getElementById('manualAttachment');
-    if (fileInput.files.length > 0 && !attachmentFileId) {
-      showToast('⏳ Subiendo archivo adjunto...', 2000);
-      try {
-        attachmentFileId = await uploadAttachmentToTelegram(fileInput.files[0]);
-        showToast('✅ Archivo listo', 1000);
-      } catch (err) {
-        showToast('❌ Error al subir el archivo: ' + err.message, 3000);
-        return;
-      }
-    }
-
     const sendData = {
       action: 'manual_send',
       target_user_id: targetUserId,
-      product: { id: product.id, name: product.name, description: product.description, price: product.price },
+      product: product,
       custom_message: customMessage || `Aquí está tu producto: ${product.name}`,
-      attachment_file_id: attachmentFileId || null
+      attachment: manualFileBase64 || null
     };
-
+    
     const dataStr = JSON.stringify(sendData);
+    console.log(`📏 Tamaño del envío: ${dataStr.length} bytes (límite 4096)`);
+    
     if (dataStr.length > 4096) {
-      showToast('⚠️ Los datos son demasiado grandes', 3000);
+      showToast(`⚠️ Datos demasiado grandes (${Math.round(dataStr.length/1024)} KB)`, 3000);
       return;
     }
-
+    
     if (isTelegram) {
       tg.sendData(dataStr);
       tg.showPopup({ title: '📨 Envío solicitado', message: 'El bot procesará el envío.' });
@@ -786,13 +703,13 @@
       console.log('📤 Datos enviados (demo):', sendData);
       showToast(`📨 Enviado a ${targetUserId} (demo)`, 2000);
     }
-
+    
     document.getElementById('targetUserId').value = '';
     manualProductSelect.value = '';
     document.getElementById('customMessage').value = '';
     if (manualAttachment) manualAttachment.value = '';
     if (attachmentFileName) attachmentFileName.textContent = 'Ningún archivo seleccionado';
-    manualFileFileId = null;
+    manualFileBase64 = null;
   }
 
   // ---------- EDICIÓN DE PRODUCTOS ----------
@@ -810,7 +727,7 @@
     editProductModal.style.display = 'none';
   }
 
-  async function handleEditProductSubmit(e) {
+  function handleEditProductSubmit(e) {
     e.preventDefault();
     const id = editProductId.value;
     const productIndex = products.findIndex(p => p.id === id);
@@ -826,7 +743,7 @@
     };
     
     products[productIndex] = updatedProduct;
-    await saveProducts();
+    saveProducts();
     renderStore();
     renderAdminList();
     populateManualSelect();
@@ -835,15 +752,15 @@
     if (isTelegram) tg.HapticFeedback?.notificationOccurred('success');
   }
 
-  async function confirmDeleteProduct(productId) {
+  function confirmDeleteProduct(productId) {
     modalTitle.textContent = 'Eliminar producto';
     modalMessage.textContent = '¿Estás seguro?';
     modalOverlay.style.display = 'flex';
-    modalConfirm.onclick = async () => {
+    modalConfirm.onclick = () => {
       products = products.filter(p => p.id !== productId);
       delete paymentConfigs[productId];
-      await saveProducts();
-      await savePaymentConfigs();
+      saveProducts();
+      savePaymentConfigs();
       renderStore();
       renderAdminList();
       populateManualSelect();
@@ -853,7 +770,7 @@
     modalCancel.onclick = () => modalOverlay.style.display = 'none';
   }
 
-  async function handleAddProduct(e) {
+  function handleAddProduct(e) {
     e.preventDefault();
     const name = document.getElementById('productName').value.trim();
     const description = document.getElementById('productDescription').value.trim();
@@ -864,7 +781,7 @@
     const newId = Date.now().toString();
     const newProduct = { id: newId, name, description, price, image, inStock };
     products.push(newProduct);
-    await saveProducts();
+    saveProducts();
     addProductForm.reset();
     document.getElementById('productImage').value = '📦';
     document.getElementById('productStock').value = 'true';
@@ -915,19 +832,22 @@
     if (addProductForm) addProductForm.onsubmit = handleAddProduct;
     const sendManualBtn = document.getElementById('sendManualProductBtn');
     if (sendManualBtn) sendManualBtn.onclick = handleManualSend;
-
+    
     if (manualAttachment) {
       manualAttachment.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
           attachmentFileName.textContent = file.name;
-          manualFileFileId = null;
+          const reader = new FileReader();
+          reader.onload = (ev) => { manualFileBase64 = ev.target.result; };
+          reader.readAsDataURL(file);
         } else {
           attachmentFileName.textContent = 'Ningún archivo seleccionado';
+          manualFileBase64 = null;
         }
       });
     }
-
+    
     const exportBtn = document.getElementById('exportDataBtn');
     if (exportBtn) exportBtn.onclick = () => {
       const exportPayload = JSON.stringify({ action: 'export_data', data: { products, purchases, paymentConfigs } });
@@ -944,9 +864,9 @@
         modalTitle.textContent = 'Limpiar historial';
         modalMessage.textContent = '¿Seguro que deseas borrar tu historial de compras?';
         modalOverlay.style.display = 'flex';
-        modalConfirm.onclick = async () => {
+        modalConfirm.onclick = () => {
           purchases = purchases.filter(p => p.userId !== currentUser.id);
-          await savePurchases();
+          savePurchases();
           renderUserPurchases();
           if (isAdmin) renderUsersList();
           modalOverlay.style.display = 'none';
@@ -960,9 +880,9 @@
       modalTitle.textContent = 'Limpiar tienda';
       modalMessage.textContent = '¿Eliminar TODO (productos, compras, configuraciones)?';
       modalOverlay.style.display = 'flex';
-      modalConfirm.onclick = async () => {
+      modalConfirm.onclick = () => {
         products = []; purchases = []; paymentConfigs = {};
-        await saveProducts(); await savePurchases(); await savePaymentConfigs();
+        saveProducts(); savePurchases(); savePaymentConfigs();
         renderStore(); renderAdminList(); renderUsersList();
         modalOverlay.style.display = 'none';
         showToast('🧹 Tienda limpia', 1500);
@@ -979,6 +899,5 @@
     if (editProductModal) editProductModal.onclick = (e) => { if (e.target === editProductModal) closeEditModal(); };
   }
 
-  // Iniciar la aplicación
-  init().catch(console.error);
+  init();
 })();
