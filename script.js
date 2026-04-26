@@ -234,20 +234,20 @@
   // ---------- ACTUALIZACIÓN DE UI ----------
   function updateUIForRole() {
     const displayName = currentUser.first_name + (currentUser.last_name ? ' ' + currentUser.last_name : '');
-    userName.textContent = displayName || 'Usuario';
-    userUsername.textContent = currentUser.username ? '@' + currentUser.username : '@usuario';
-    userAvatar.textContent = (currentUser.first_name?.charAt(0) || 'U').toUpperCase();
+    if (userName) userName.textContent = displayName || 'Usuario';
+    if (userUsername) userUsername.textContent = currentUser.username ? '@' + currentUser.username : '@usuario';
+    if (userAvatar) userAvatar.textContent = (currentUser.first_name?.charAt(0) || 'U').toUpperCase();
 
     if (isAdmin) {
-      adminPanelBtn.style.display = 'flex';
-      bottomTabs.style.display = 'flex';
-      headerSubtitle.textContent = 'Admin · Tienda';
+      if (adminPanelBtn) adminPanelBtn.style.display = 'flex';
+      if (bottomTabs) bottomTabs.style.display = 'flex';
+      if (headerSubtitle) headerSubtitle.textContent = 'Admin · Tienda';
     } else {
-      adminPanelBtn.style.display = 'none';
-      bottomTabs.style.display = 'none';
-      headerSubtitle.textContent = 'Tienda digital';
+      if (adminPanelBtn) adminPanelBtn.style.display = 'none';
+      if (bottomTabs) bottomTabs.style.display = 'none';
+      if (headerSubtitle) headerSubtitle.textContent = 'Tienda digital';
     }
-    headerTitle.textContent = 'Wireguard Shop';
+    if (headerTitle) headerTitle.textContent = 'Wireguard Shop';
   }
 
   // ---------- RENDERIZADO DE PRODUCTOS ----------
@@ -416,6 +416,10 @@
   function renderPaymentConfigForm() {
     const container = document.getElementById('paymentConfigContainer');
     if (!container) return;
+    if (!isAdmin) {
+      container.innerHTML = '<div class="empty-state">⛔ Solo administradores</div>';
+      return;
+    }
     
     let html = `
       <div class="form-group">
@@ -663,6 +667,10 @@
 
   // ---------- ENVÍO MANUAL ----------
   function openManualSendForUser(userId, userDisplayName) {
+    if (!isAdmin) {
+      showToast('⛔ Solo administradores', 2000);
+      return;
+    }
     if (adminView && !adminView.classList.contains('active')) switchView('admin');
     const targetInput = document.getElementById('targetUserId');
     if (targetInput) targetInput.value = userId;
@@ -670,6 +678,10 @@
   }
 
   function handleManualSend() {
+    if (!isAdmin) {
+      showToast('⛔ Solo administradores', 2000);
+      return;
+    }
     const targetUserId = document.getElementById('targetUserId').value.trim();
     const productId = manualProductSelect.value;
     const customMessage = document.getElementById('customMessage').value.trim();
@@ -729,6 +741,10 @@
 
   function handleEditProductSubmit(e) {
     e.preventDefault();
+    if (!isAdmin) {
+      showToast('⛔ Solo administradores', 2000);
+      return;
+    }
     const id = editProductId.value;
     const productIndex = products.findIndex(p => p.id === id);
     if (productIndex === -1) return;
@@ -753,6 +769,10 @@
   }
 
   function confirmDeleteProduct(productId) {
+    if (!isAdmin) {
+      showToast('⛔ Solo administradores', 2000);
+      return;
+    }
     modalTitle.textContent = 'Eliminar producto';
     modalMessage.textContent = '¿Estás seguro?';
     modalOverlay.style.display = 'flex';
@@ -772,6 +792,10 @@
 
   function handleAddProduct(e) {
     e.preventDefault();
+    if (!isAdmin) {
+      showToast('⛔ Solo administradores', 2000);
+      return;
+    }
     const name = document.getElementById('productName').value.trim();
     const description = document.getElementById('productDescription').value.trim();
     const price = parseFloat(document.getElementById('productPrice').value) || 0;
@@ -792,17 +816,21 @@
   }
 
   function switchView(viewName) {
-    storeView.classList.remove('active');
-    adminView.classList.remove('active');
-    if (viewName === 'store') {
-      storeView.classList.add('active');
-      document.querySelectorAll('.tab-item').forEach(t => t.classList.toggle('active', t.dataset.view === 'store'));
-    } else {
-      adminView.classList.add('active');
+    if (viewName === 'admin') {
+      if (!isAdmin) {
+        showToast('⛔ Solo administradores', 2000);
+        return;
+      }
+      if (storeView) storeView.classList.remove('active');
+      if (adminView) adminView.classList.add('active');
       renderUsersList();
       populateManualSelect();
       renderPaymentConfigForm();
       document.querySelectorAll('.tab-item').forEach(t => t.classList.toggle('active', t.dataset.view === 'admin'));
+    } else {
+      if (storeView) storeView.classList.add('active');
+      if (adminView) adminView.classList.remove('active');
+      document.querySelectorAll('.tab-item').forEach(t => t.classList.toggle('active', t.dataset.view === 'store'));
     }
   }
 
@@ -817,14 +845,17 @@
   // ---------- EVENT LISTENERS ----------
   function setupEventListeners() {
     if (backBtn) backBtn.onclick = () => {
-      if (adminView.classList.contains('active') && isAdmin) switchView('store');
+      if (adminView && adminView.classList.contains('active') && isAdmin) switchView('store');
       else if (isTelegram) tg.BackButton.onClick?.() || tg.close();
     };
     if (menuBtn) menuBtn.onclick = () => {
       if (isTelegram) tg.showPopup({ title: 'Wireguard Shop', message: 'Tienda de productos digitales' });
       else alert('Wireguard Shop');
     };
-    if (adminPanelBtn) adminPanelBtn.onclick = () => switchView('admin');
+    if (adminPanelBtn) adminPanelBtn.onclick = () => {
+      if (isAdmin) switchView('admin');
+      else showToast('⛔ Solo administradores', 2000);
+    };
     if (logoutBtn) logoutBtn.onclick = () => {
       if (isTelegram) tg.showPopup({ title: 'Cerrar sesión', message: 'Puedes cerrar la mini app.' });
     };
@@ -850,6 +881,10 @@
     
     const exportBtn = document.getElementById('exportDataBtn');
     if (exportBtn) exportBtn.onclick = () => {
+      if (!isAdmin) {
+        showToast('⛔ Solo administradores', 2000);
+        return;
+      }
       const exportPayload = JSON.stringify({ action: 'export_data', data: { products, purchases, paymentConfigs } });
       if (isTelegram) {
         tg.sendData(exportPayload);
@@ -877,6 +912,10 @@
     }
     const clearAllBtn = document.getElementById('clearAllBtn');
     if (clearAllBtn) clearAllBtn.onclick = () => {
+      if (!isAdmin) {
+        showToast('⛔ Solo administradores', 2000);
+        return;
+      }
       modalTitle.textContent = 'Limpiar tienda';
       modalMessage.textContent = '¿Eliminar TODO (productos, compras, configuraciones)?';
       modalOverlay.style.display = 'flex';
